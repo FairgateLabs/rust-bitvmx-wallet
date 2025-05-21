@@ -1,0 +1,27 @@
+bitcoin:
+  network: testnet
+  url: "https://distinguished-intensive-frost.btc-testnet.quiknode.pro/38d0f064dc8e72fe44d8a9a762d448bc64c54619/"
+  username: ""
+  password: ""
+  wallet: test_wallet
+
+builder:
+  protocol_amount: 2450000
+  speedup_amount: 2450000
+  locked_amount: 95000000
+  locked_blocks: 200
+  ecdsa_sighash_type: SIGHASH_ALL
+  taproot_sighash_type: SIGHASH_ALL
+
+key_manager:
+  network: testnet
+  key_derivation_path: m/101/1/0/0/
+  key_derivation_seed: 1000beefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+  winternitz_seed: 1000beefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+
+key_storage:
+  password: secret_password_1
+  path: /tmp/development/keys.db
+
+storage:
+  path: /tmp/development/storage.db

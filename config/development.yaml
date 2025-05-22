@@ -15,9 +15,6 @@ builder:
 
 key_manager:
   network: testnet
-  key_derivation_path: m/101/1/0/0/
-  key_derivation_seed: 1000beefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
-  winternitz_seed: 1000beefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
 
 key_storage:
   password: secret_password_1
@@ -25,3 +22,6 @@ key_storage:
 
 storage:
   path: /tmp/development/storage.db
+
+wallet:
+  private_key: 7092b98be432df384ce0e92a063a7fd1b2f4038d74c302c0efa5888f2a40f33c

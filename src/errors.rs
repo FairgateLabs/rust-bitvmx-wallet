@@ -1,17 +1,10 @@
 use bitvmx_bitcoin_rpc::errors::BitcoinClientError;
-use config as settings;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum ConfigError {
-    #[error("Error while trying to build configuration")]
-    ConfigFileError(#[from] settings::ConfigError),
-}
-
-#[derive(Error, Debug)]
 pub enum WalletError {
-    #[error("Error while trying to build wallet")]
-    ConfigError(#[from] ConfigError),
+    #[error("Error while trying to build configuration")]
+    ConfigError(#[from] bitvmx_settings::errors::ConfigError),
 
     #[error("Error with the Bitcoin client")]
     BitcoinClientError(#[from] BitcoinClientError),
@@ -21,4 +14,13 @@ pub enum WalletError {
 
     #[error("Error with the key manager")]
     KeyManagerError(#[from] key_manager::errors::KeyManagerError),
+
+    #[error("Error with the storage backend")]
+    StoreError(#[from] storage_backend::error::StorageError),
+
+    #[error("Funding not found")]
+    FundingNotFound,
+
+    #[error("Insufficient funds")]
+    InsufficientFunds,
 }

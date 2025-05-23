@@ -96,6 +96,7 @@ fn main() {
             amount,
             fee,
             taproot: output_is_taproot,
+            confirm,
         } => {
             let to_pubkey = match to_pubkey.parse() {
                 Ok(pk) => pk,
@@ -111,6 +112,7 @@ fn main() {
                 &amount,
                 *fee,
                 *output_is_taproot,
+                *confirm,
             ) {
                 Ok(txid) => println!("Funded address, txid: {txid}"),
                 Err(e) => eprintln!("Error: {e}"),

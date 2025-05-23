@@ -3,7 +3,9 @@ use bitcoin::{network, Address, Amount, OutPoint, PublicKey, Transaction, Txid};
 use bitvmx_bitcoin_rpc::bitcoin_client::{BitcoinClient, BitcoinClientApi};
 use key_manager::{key_manager::KeyManager, key_store::KeyStore};
 use protocol_builder::{
-    builder::Protocol, scripts::{self, SignMode}, types::{input::SighashType, output::SpendMode, InputArgs, OutputType}
+    builder::Protocol,
+    scripts::{self, SignMode},
+    types::{input::SighashType, output::SpendMode, InputArgs, OutputType},
 };
 use std::rc::Rc;
 use storage_backend::storage::{KeyValueStore, Storage};
@@ -134,6 +136,7 @@ impl Wallet {
         amount: &Vec<u64>,
         fee: u64,
         output_is_taproot: bool,
+        auto_confirm: bool,
     ) -> Result<Txid, WalletError> {
         let key = self.pending_transfer(identifier, funding_id);
         if self.store.has_key(&key)? {
@@ -166,6 +169,10 @@ impl Wallet {
         let txid = result.compute_txid();
 
         self.store.set(key, (txid, change_vout, change), None)?;
+
+        if auto_confirm {
+            self.confirm_transfer(identifier, funding_id)?;
+        }
 
         Ok(txid)
     }
@@ -230,10 +237,10 @@ impl Wallet {
         for value in amount {
             info!("Amount: {value}");
             let transfer_output = if output_is_taproot {
-                let sig_check = scripts::check_aggregated_signature(&to_pubkey, SignMode::Aggregate);
+                let sig_check =
+                    scripts::check_aggregated_signature(&to_pubkey, SignMode::Aggregate);
                 OutputType::taproot(*value, &to_pubkey, &[sig_check], &vec![])?
-            }
-            else {
+            } else {
                 OutputType::segwit_key(*value, &to_pubkey)?
             };
 
@@ -374,12 +381,12 @@ mod tests {
         let pk = PublicKey::from_str(
             "038f47dcd43ba6d97fc9ed2e3bba09b175a45fac55f0683e8cf771e8ced4572354",
         )?;
-        wallet.fund_address("wallet_1", "fund_1", pk, &vec![9_000], 1000, false)?;
+        wallet.fund_address("wallet_1", "fund_1", pk, &vec![9_000], 1000, false, false)?;
         wallet.confirm_transfer("wallet_1", "fund_1")?;
         let funds = wallet.list_funds("wallet_1")?;
         info!("Funds: {:?}", funds);
 
-        wallet.fund_address("wallet_1", "fund_1", pk, &vec![89_000], 1000, false)?;
+        wallet.fund_address("wallet_1", "fund_1", pk, &vec![89_000], 1000, false, false)?;
         wallet.confirm_transfer("wallet_1", "fund_1")?;
         let funds = wallet.list_funds("wallet_1")?;
         info!("Funds: {:?}", funds);
@@ -418,12 +425,12 @@ mod tests {
         let pk = PublicKey::from_str(
             "038f47dcd43ba6d97fc9ed2e3bba09b175a45fac55f0683e8cf771e8ced4572354",
         )?;
-        wallet.fund_address("wallet_1", "fund_1", pk, &vec![9_000], 1000, false)?;
+        wallet.fund_address("wallet_1", "fund_1", pk, &vec![9_000], 1000, false, false)?;
         wallet.confirm_transfer("wallet_1", "fund_1")?;
         let funds = wallet.list_funds("wallet_1")?;
         info!("Funds: {:?}", funds);
 
-        wallet.fund_address("wallet_1", "fund_1", pk, &vec![89_000], 1000, false)?;
+        wallet.fund_address("wallet_1", "fund_1", pk, &vec![89_000], 1000, false, false)?;
         wallet.confirm_transfer("wallet_1", "fund_1")?;
         let funds = wallet.list_funds("wallet_1")?;
         info!("Funds: {:?}", funds);

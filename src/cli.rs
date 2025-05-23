@@ -43,6 +43,8 @@ pub enum Commands {
         fee: u64,
         #[arg(long, default_value = "false")]
         taproot: bool,
+        #[arg(long, default_value = "false")]
+        confirm: bool,
     },
     /// Confirm a transfer
     ConfirmTransfer {

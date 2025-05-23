@@ -32,4 +32,7 @@ pub enum WalletError {
 
     #[error("Insufficient funds")]
     InsufficientFunds,
+
+    #[error("Invalid spending scripts")]
+    InvalidSpendingScripts,
 }

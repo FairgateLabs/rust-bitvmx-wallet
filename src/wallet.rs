@@ -4,7 +4,7 @@ use bitvmx_bitcoin_rpc::bitcoin_client::{BitcoinClient, BitcoinClientApi};
 use key_manager::{key_manager::KeyManager, key_store::KeyStore};
 use protocol_builder::{
     builder::Protocol,
-    scripts::{self, SignMode},
+    scripts::{self, ProtocolScript, SignMode},
     types::{input::SighashType, output::SpendMode, InputArgs, OutputType},
 };
 use std::rc::Rc;
@@ -143,6 +143,7 @@ impl Wallet {
         fee: u64,
         output_is_taproot: bool,
         auto_confirm: bool,
+        spending_scripts: Option<Vec<Vec<ProtocolScript>>>,
     ) -> Result<Txid, WalletError> {
         let pending_key =
             StoreKey::PendingTransfer(identifier.to_string(), funding_id.to_string()).get_key();
@@ -177,6 +178,7 @@ impl Wallet {
             amount,
             fee,
             output_is_taproot,
+            spending_scripts,
         )?;
 
         let txid = result.compute_txid();
@@ -227,6 +229,7 @@ impl Wallet {
         amount: &Vec<u64>,
         fee: u64,
         output_is_taproot: bool,
+        spending_scripts: Option<Vec<Vec<ProtocolScript>>>,
     ) -> Result<(Transaction, u64), WalletError> {
         let total_amount = origin_amount;
 
@@ -250,12 +253,19 @@ impl Wallet {
             &SighashType::ecdsa_all(),
         )?;
 
-        for value in amount {
+        for (i, value) in amount.iter().enumerate() {
             info!("Amount: {value}");
             let transfer_output = if output_is_taproot {
-                let sig_check =
-                    scripts::check_aggregated_signature(&to_pubkey, SignMode::Aggregate);
-                OutputType::taproot(*value, &to_pubkey, &[sig_check], &vec![])?
+                if let Some(spending_scripts) = &spending_scripts {
+                    if spending_scripts.len() != amount.len() {
+                        return Err(WalletError::InvalidSpendingScripts);
+                    }
+                    OutputType::taproot(*value, &to_pubkey, &spending_scripts[i], &vec![])?
+                } else {
+                    let sig_check =
+                        scripts::check_aggregated_signature(&to_pubkey, SignMode::Aggregate);
+                    OutputType::taproot(*value, &to_pubkey, &[sig_check], &vec![])?
+                }
             } else {
                 OutputType::segwit_key(*value, &to_pubkey)?
             };
@@ -427,6 +437,7 @@ mod tests {
             1000,
             false,
             false,
+            None,
         )?;
         wallet.confirm_transfer(wallet_name, funding_id)?;
         let funds = wallet.list_funds(wallet_name)?;
@@ -440,6 +451,7 @@ mod tests {
             1000,
             false,
             false,
+            None,
         )?;
         wallet.confirm_transfer(wallet_name, funding_id)?;
         let funds = wallet.list_funds(wallet_name)?;
@@ -490,6 +502,7 @@ mod tests {
             1000,
             false,
             false,
+            None,
         )?;
         wallet.confirm_transfer(wallet_name, funding_id)?;
         let funds = wallet.list_funds(wallet_name)?;
@@ -503,6 +516,7 @@ mod tests {
             1000,
             false,
             false,
+            None,
         )?;
         wallet.confirm_transfer(wallet_name, funding_id)?;
         let funds = wallet.list_funds(wallet_name)?;

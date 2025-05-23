@@ -113,6 +113,7 @@ fn main() {
                 *fee,
                 *output_is_taproot,
                 *confirm,
+                None,
             ) {
                 Ok(txid) => println!("Funded address, txid: {txid}"),
                 Err(e) => eprintln!("Error: {e}"),

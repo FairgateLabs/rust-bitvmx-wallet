@@ -37,7 +37,7 @@ cargo run -- [OPTIONS] <COMMAND>
 - `remove-funding <IDENTIFIER> <FUNDING_ID>`  
   Remove a funding entry.
 
-- `fund-address <IDENTIFIER> <FUNDING_ID> <TO_PUBKEY> <AMOUNT> <FEE>`  
+- `fund-address <IDENTIFIER> <FUNDING_ID> <TO_PUBKEY> <AMOUNT> <FEE> {OUTPUT_IS_TAPROOT = FALSE}`  
   Send funds to a public key.
 
 - `confirm-transfer <IDENTIFIER> <FUNDING_ID>`  

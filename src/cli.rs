@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{ArgAction, Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "bitvmx-wallet")]
@@ -41,6 +41,8 @@ pub enum Commands {
         #[arg(value_delimiter = ',')]
         amount: Vec<u64>,
         fee: u64,
+        #[clap(action=ArgAction::SetFalse)]
+        output_is_taproot: bool,
     },
     /// Confirm a transfer
     ConfirmTransfer {

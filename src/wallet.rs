@@ -81,16 +81,24 @@ impl Wallet {
 
     pub fn create_wallet(&self, identifier: &str, index: u32) -> Result<PublicKey, WalletError> {
         let key = StoreKey::Wallet(identifier.to_string()).get_key();
+
         if self.store.has_key(&key)? {
             return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
+
+        //TODO: check if we can hardcode the index to 0 here. Because is for receiving funds
         let public = self.key_manager.derive_keypair(index)?;
 
         self.store.set(key, public.clone(), None)?;
+
         Ok(public)
     }
 
-    pub fn import_secret_key(&self, identifier: &str, secret_key: &str) -> Result<(), WalletError> {
+    pub fn create_wallet_from_secret(
+        &self,
+        identifier: &str,
+        secret_key: &str,
+    ) -> Result<(), WalletError> {
         let key = StoreKey::Wallet(identifier.to_string()).get_key();
 
         if self.store.has_key(&key)? {
@@ -326,7 +334,7 @@ impl Wallet {
         &self,
         identifier: &str,
     ) -> Result<Vec<(String, OutPoint, u64)>, WalletError> {
-        let key = StoreKey::Funding(identifier.to_string(), "".to_string()).get_key();
+        let key = StoreKey::Funding(identifier.to_string(), String::new()).get_key();
         let mut funds = Vec::new();
         for identifier_key in self.store.partial_compare_keys(&key)? {
             if let Some((outpoint, value)) = self.store.get(&identifier_key)? {
@@ -341,7 +349,7 @@ impl Wallet {
     }
 
     pub fn get_wallets(&self) -> Result<Vec<(String, PublicKey)>, WalletError> {
-        let key = StoreKey::Wallet("".to_string()).get_key();
+        let key = StoreKey::Wallet(String::new()).get_key();
         let mut wallets = Vec::new();
 
         for identifier_key in self.store.partial_compare_keys(&key)? {
@@ -360,15 +368,13 @@ impl Wallet {
 
 #[cfg(test)]
 mod tests {
-    use std::{str::FromStr, sync::Once};
-
-    use bitcoin::hashes::Hash;
-    use bitcoind::bitcoind::Bitcoind;
-    use tracing::info;
-    use tracing_subscriber::EnvFilter;
-
     use super::*;
     use anyhow::{Ok, Result};
+    use bitcoin::{hashes::Hash, key::rand};
+    use bitcoind::bitcoind::Bitcoind;
+    use std::{str::FromStr, sync::Once};
+    use tracing::info;
+    use tracing_subscriber::EnvFilter;
 
     static INIT: Once = Once::new();
 
@@ -376,6 +382,31 @@ mod tests {
         INIT.call_once(|| {
             config_trace_aux();
         });
+    }
+
+    fn generate_random_string() -> String {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        (0..10).map(|_| rng.gen_range('a'..='z')).collect()
+    }
+
+    fn clean_and_load_config(config_path: &str) -> Result<Config, anyhow::Error> {
+        let base_path = "/tmp/wallet";
+
+        clear_db(&base_path);
+
+        config_trace();
+
+        let mut config =
+            bitvmx_settings::settings::load_config_file::<Config>(Some(config_path.to_string()))?;
+
+        let storage_path = format!("{base_path}/{}/storage.db", generate_random_string());
+        let key_storage_path = format!("{base_path}/{}/keys.db", generate_random_string());
+
+        config.storage.path = storage_path;
+        config.key_storage.path = key_storage_path;
+
+        Ok(config)
     }
 
     fn config_trace_aux() {
@@ -394,17 +425,11 @@ mod tests {
     fn clear_db(path: &str) {
         let _ = std::fs::remove_dir_all(path);
     }
+
     #[test]
     #[ignore]
     fn test_fund_address() -> Result<(), anyhow::Error> {
-        config_trace();
-
-        let config = bitvmx_settings::settings::load_config_file::<Config>(Some(
-            "config/regtest.yaml".to_string(),
-        ))?;
-
-        clear_db(&config.storage.path);
-        clear_db(&config.key_storage.path);
+        let config = clean_and_load_config("config/regtest.yaml")?;
 
         let bitcoind = Bitcoind::new(
             "bitcoin-regtest",
@@ -463,15 +488,7 @@ mod tests {
 
     #[test]
     fn test_wallet_logic() -> Result<(), anyhow::Error> {
-        config_trace();
-
-        let config = bitvmx_settings::settings::load_config_file::<Config>(Some(
-            "config/regtest.yaml".to_string(),
-        ))?;
-
-        //TODO: make temp dbs
-        clear_db(&config.storage.path);
-        clear_db(&config.key_storage.path);
+        let config = clean_and_load_config("config/regtest.yaml")?;
 
         let wallet = Wallet::new(config, false)?;
 
@@ -527,14 +544,7 @@ mod tests {
 
     #[test]
     fn test_get_wallets() -> Result<(), anyhow::Error> {
-        config_trace();
-
-        let config = bitvmx_settings::settings::load_config_file::<Config>(Some(
-            "config/regtest.yaml".to_string(),
-        ))?;
-
-        clear_db(&config.storage.path);
-        clear_db(&config.key_storage.path);
+        let config = clean_and_load_config("config/regtest.yaml")?;
 
         let wallet = Wallet::new(config, false)?;
 

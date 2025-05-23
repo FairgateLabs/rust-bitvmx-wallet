@@ -392,22 +392,41 @@ mod tests {
         let wallet = Wallet::new(config, true)?;
         wallet.mine(101)?;
 
-        wallet.create_secret_key("wallet_1", 0)?;
-        wallet.regtest_fund("wallet_1", "fund_1", 100_000)?;
-        let funds = wallet.list_funds("wallet_1")?;
+        let wallet_name = "wallet_1";
+        let funding_id = "fund_1";
+
+        wallet.create_secret_key(wallet_name, 0)?;
+        wallet.regtest_fund(wallet_name, funding_id, 100_000)?;
+        let funds = wallet.list_funds(wallet_name)?;
         info!("Funds: {:?}", funds);
 
         let pk = PublicKey::from_str(
             "038f47dcd43ba6d97fc9ed2e3bba09b175a45fac55f0683e8cf771e8ced4572354",
         )?;
-        wallet.fund_address("wallet_1", "fund_1", pk, &vec![9_000], 1000, false, false)?;
-        wallet.confirm_transfer("wallet_1", "fund_1")?;
-        let funds = wallet.list_funds("wallet_1")?;
+        wallet.fund_address(
+            wallet_name,
+            funding_id,
+            pk,
+            &vec![9_000],
+            1000,
+            false,
+            false,
+        )?;
+        wallet.confirm_transfer(wallet_name, funding_id)?;
+        let funds = wallet.list_funds(wallet_name)?;
         info!("Funds: {:?}", funds);
 
-        wallet.fund_address("wallet_1", "fund_1", pk, &vec![89_000], 1000, false, false)?;
-        wallet.confirm_transfer("wallet_1", "fund_1")?;
-        let funds = wallet.list_funds("wallet_1")?;
+        wallet.fund_address(
+            wallet_name,
+            funding_id,
+            pk,
+            &vec![89_000],
+            1000,
+            false,
+            false,
+        )?;
+        wallet.confirm_transfer(wallet_name, funding_id)?;
+        let funds = wallet.list_funds(wallet_name)?;
         info!("Funds: {:?}", funds);
 
         bitcoind.stop()?;
@@ -428,31 +447,49 @@ mod tests {
 
         let wallet = Wallet::new(config, false)?;
 
-        wallet.create_secret_key("wallet_1", 0)?;
+        let wallet_name = "wallet_1";
+        let funding_id = "fund_1";
+
+        wallet.create_secret_key(wallet_name, 0)?;
         wallet.add_funding(
-            "wallet_1",
-            "fund_1",
+            wallet_name,
+            funding_id,
             OutPoint {
                 txid: Txid::all_zeros(),
                 vout: 1,
             },
             100_000,
         )?;
-        println!("YYYYY");
-        let funds = wallet.list_funds("wallet_1")?;
+        let funds = wallet.list_funds(wallet_name)?;
         info!("Funds: {:?}", funds);
 
         let pk = PublicKey::from_str(
             "038f47dcd43ba6d97fc9ed2e3bba09b175a45fac55f0683e8cf771e8ced4572354",
         )?;
-        wallet.fund_address("wallet_1", "fund_1", pk, &vec![9_000], 1000, false, false)?;
-        wallet.confirm_transfer("wallet_1", "fund_1")?;
-        let funds = wallet.list_funds("wallet_1")?;
+        wallet.fund_address(
+            wallet_name,
+            funding_id,
+            pk,
+            &vec![9_000],
+            1000,
+            false,
+            false,
+        )?;
+        wallet.confirm_transfer(wallet_name, funding_id)?;
+        let funds = wallet.list_funds(wallet_name)?;
         info!("Funds: {:?}", funds);
 
-        wallet.fund_address("wallet_1", "fund_1", pk, &vec![89_000], 1000, false, false)?;
-        wallet.confirm_transfer("wallet_1", "fund_1")?;
-        let funds = wallet.list_funds("wallet_1")?;
+        wallet.fund_address(
+            wallet_name,
+            funding_id,
+            pk,
+            &vec![89_000],
+            1000,
+            false,
+            false,
+        )?;
+        wallet.confirm_transfer(wallet_name, funding_id)?;
+        let funds = wallet.list_funds(wallet_name)?;
         info!("Funds: {:?}", funds);
 
         Ok(())

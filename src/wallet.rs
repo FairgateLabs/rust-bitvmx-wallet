@@ -1,5 +1,5 @@
-use crate::{config::WalletConfig, errors::WalletError};
-use bitcoin::{secp256k1::SecretKey, OutPoint, PublicKey, Transaction, Txid};
+use crate::errors::WalletError;
+use bitcoin::{network, OutPoint, PublicKey, Transaction, Txid};
 use bitvmx_bitcoin_rpc::{
     bitcoin_client::{BitcoinClient, BitcoinClientApi},
     rpc_config::RpcConfig,
@@ -9,63 +9,159 @@ use protocol_builder::{
     builder::Protocol,
     types::{input::SighashType, output::SpendMode, InputArgs, OutputType},
 };
-use std::{env, rc::Rc, str::FromStr};
+use std::{env, process::id, rc::Rc, str::FromStr};
 use storage_backend::storage::{KeyValueStore, Storage};
 
 pub struct Wallet {
-    bitcoin_client: BitcoinClient,
     store: Rc<Storage>,
     key_manager: Rc<KeyManager>,
-    pub pub_key: PublicKey,
+    network: bitcoin::Network,
 }
 
 impl Wallet {
     pub fn new(
-        bitcoin_client_config: RpcConfig,
         store: Rc<Storage>,
         key_manager: Rc<KeyManager>,
-        wallet_config: WalletConfig,
+        network: bitcoin::Network,
     ) -> Result<Wallet, WalletError> {
-        let network = bitcoin_client_config.network;
-        let bitcoin_client = BitcoinClient::new_from_config(&bitcoin_client_config)?;
-        let wallet_pub_key = key_manager.import_secret_key(&wallet_config.private_key, network)?;
-
         Ok(Self {
-            bitcoin_client,
             store,
             key_manager,
-            pub_key: wallet_pub_key,
+            network,
         })
     }
 
-    pub fn add_funding(&self, outpoint: OutPoint) -> Result<(), WalletError> {
-        let key = "wallet/funding";
-        self.store.set(key, outpoint, None)?;
+    fn key_identifier(&self, identifier: &str) -> String {
+        format!("wallet/{}", identifier)
+    }
+
+    fn key_funding(&self, identifier: &str, funding_id: &str) -> String {
+        format!("wallet/{}/funding/{}", identifier, funding_id)
+    }
+
+    fn pending_transfer(&self, identifier: &str, funding_id: &str) -> String {
+        format!("wallet/{}/transfers/{}", identifier, funding_id)
+    }
+
+    pub fn import_secret_key(&self, identifier: &str, secret_key: &str) -> Result<(), WalletError> {
+        if self.store.has_key(&self.key_identifier(identifier))? {
+            return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
+        }
+
+        let wallet_pub_key = self
+            .key_manager
+            .import_secret_key(secret_key, self.network)?;
+
+        self.store
+            .set(self.key_identifier(identifier), wallet_pub_key, None)?;
+
         Ok(())
     }
 
-    pub fn fund_address(&self, to_pubkey: PublicKey, amount: u64) -> Result<Txid, WalletError> {
-        let key = "wallet/funding";
-        let outpoint: OutPoint = self.store.get(&key)?.ok_or(WalletError::FundingNotFound)?;
+    pub fn add_funding(
+        &self,
+        identifier: &str,
+        funding_id: &str,
+        outpoint: OutPoint,
+        amount: u64,
+    ) -> Result<(), WalletError> {
+        let key = self.key_funding(identifier, funding_id);
+        if self.store.has_key(&key)? {
+            return Err(WalletError::KeyAlreadyExists(key));
+        }
+        self.store.set(key, (outpoint, amount), None)?;
+        Ok(())
+    }
 
-        let result = self.create_transfer_transaction(outpoint, to_pubkey, amount)?;
+    pub fn remove_funding(&self, identifier: &str, funding_id: &str) -> Result<(), WalletError> {
+        let key = self.key_funding(identifier, funding_id);
+        if self.store.has_key(&key)? {
+            self.store.delete(&key)?;
+            Ok(())
+        } else {
+            Err(WalletError::FundingNotFound(
+                identifier.to_string(),
+                funding_id.to_string(),
+            ))
+        }
+    }
 
-        Ok(result.compute_txid())
+    pub fn fund_address(
+        &self,
+        identifier: &str,
+        funding_id: &str,
+        to_pubkey: PublicKey,
+        amount: u64,
+        fee: u64,
+    ) -> Result<Txid, WalletError> {
+        let key = self.pending_transfer(identifier, funding_id);
+        if self.store.has_key(&key)? {
+            return Err(WalletError::TransferInProgress(key));
+        }
+
+        let origin_pub_key: PublicKey = self
+            .store
+            .get(&self.key_identifier(identifier))?
+            .ok_or(WalletError::KeyNotFound(identifier.to_string()))?;
+        let (outpoint, origin_amount): (OutPoint, u64) = self
+            .store
+            .get(&self.key_funding(identifier, funding_id))?
+            .ok_or(WalletError::FundingNotFound(
+                identifier.to_string(),
+                funding_id.to_string(),
+            ))?;
+
+        let (result, change) = self.create_transfer_transaction(
+            outpoint,
+            origin_amount,
+            origin_pub_key,
+            to_pubkey,
+            amount,
+            fee,
+        )?;
+
+        let txid = result.compute_txid();
+
+        self.store.set(key, (txid, 1, change), None)?;
+
+        Ok(txid)
+    }
+
+    pub fn confirm_transfer(&self, identifier: &str, funding_id: &str) -> Result<(), WalletError> {
+        let key = self.pending_transfer(identifier, funding_id);
+        if let Some((txid, vout, change)) = self.store.get(&key)? {
+            self.store.delete(&key)?;
+            self.remove_funding(identifier, funding_id)?;
+            if change > 0 {
+                let outpoint = OutPoint::new(txid, vout);
+                self.add_funding(identifier, funding_id, outpoint, change)?;
+            }
+        } else {
+            return Err(WalletError::KeyNotFound(key));
+        }
+        Ok(())
+    }
+
+    pub fn revert_transfer(&self, identifier: &str, funding_id: &str) -> Result<(), WalletError> {
+        let key = self.pending_transfer(identifier, funding_id);
+        if self.store.has_key(&key)? {
+            self.store.delete(&key)?;
+            Ok(())
+        } else {
+            Err(WalletError::KeyNotFound(key))
+        }
     }
 
     pub fn create_transfer_transaction(
         &self,
         outpoint: OutPoint,
+        origin_amount: u64,
+        origin_pubkey: PublicKey,
         to_pubkey: PublicKey,
         amount: u64,
-    ) -> Result<Transaction, WalletError> {
-        let fee = 150; // TODO: Make this configurable
-
-        let output = self
-            .bitcoin_client
-            .get_tx_out(&outpoint.txid, outpoint.vout)?;
-
-        let total_amount = output.value.to_sat();
+        fee: u64,
+    ) -> Result<(Transaction, u64), WalletError> {
+        let total_amount = origin_amount;
 
         if total_amount < amount + fee {
             return Err(WalletError::InsufficientFunds);
@@ -73,7 +169,7 @@ impl Wallet {
 
         let change = total_amount - amount - fee;
 
-        let external_output = OutputType::segwit_key(total_amount, &self.pub_key)?;
+        let external_output = OutputType::segwit_key(total_amount, &origin_pubkey)?;
         let transfer_output = OutputType::segwit_key(amount, &to_pubkey)?;
 
         let mut protocol = Protocol::new("transfer_tx");
@@ -90,7 +186,7 @@ impl Wallet {
             .add_transaction_output("transfer", &transfer_output)?;
 
         if change > 0 {
-            let change_output = OutputType::segwit_key(change, &self.pub_key)?;
+            let change_output = OutputType::segwit_key(change, &origin_pubkey)?;
             protocol.add_transaction_output("transfer", &change_output)?;
         }
 
@@ -103,13 +199,25 @@ impl Wallet {
 
         let result = protocol.transaction_to_send("transfer", &[spending_args])?;
 
-        Ok(result)
+        Ok((result, change))
     }
 
-    pub fn get_secret_key() -> Result<SecretKey, WalletError> {
-        let user_secret_key = env::var("USER_SECRET_KEY").expect("USER_SECRET_KEY must be set");
-        let secret_key = SecretKey::from_str(&user_secret_key).unwrap();
-        Ok(secret_key)
+    pub fn list_funds(
+        &self,
+        identifier: &str,
+    ) -> Result<Vec<(String, OutPoint, u64)>, WalletError> {
+        let key = self.key_funding(identifier, "");
+        let mut funds = Vec::new();
+        for identifier_key in self.store.partial_compare_keys(&key)? {
+            if let Some((outpoint, value)) = self.store.get(&identifier_key)? {
+                funds.push((
+                    identifier_key.strip_prefix(&key).unwrap().to_string(),
+                    outpoint,
+                    value,
+                ));
+            }
+        }
+        Ok(funds)
     }
 }
 
@@ -125,7 +233,7 @@ mod tests {
 
     #[test]
     fn test_fund_address() -> Result<(), anyhow::Error> {
-        let config = Config::new(Some("config/development.yaml".to_string()))?;
+        let config = bitvmx_settings::settings::load::<Config>()?;
 
         let bitcoind = Bitcoind::new(
             "bitcoin-regtest",
@@ -153,7 +261,12 @@ mod tests {
             storage.clone(),
         )?);
 
-        let wallet = Wallet::new(config.bitcoin, storage, key_manager.clone(), config.wallet)?;
+        let wallet = Wallet::new(
+            config.bitcoin,
+            storage,
+            key_manager.clone(),
+            WalletConfig::new("some-private-key".to_string()),
+        )?;
 
         let funding_txid =
             Txid::from_str("9946702831bccfaa40c8a9018a35b8633031201ccb85ca2e9648ad5ec8892d26")

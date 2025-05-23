@@ -22,6 +22,3 @@ key_storage:
 
 storage:
   path: /tmp/development/storage.db
-
-wallet:
-  private_key: 7092b98be432df384ce0e92a063a7fd1b2f4038d74c302c0efa5888f2a40f33c

@@ -18,8 +18,17 @@ pub enum WalletError {
     #[error("Error with the storage backend")]
     StoreError(#[from] storage_backend::error::StorageError),
 
-    #[error("Funding not found")]
-    FundingNotFound,
+    #[error("Funding not found {0} {1}")]
+    FundingNotFound(String, String),
+
+    #[error("Key identifier already exists {0}")]
+    KeyAlreadyExists(String),
+
+    #[error("Transfer in progress {0}. Confirm or Revert before using this identifier")]
+    TransferInProgress(String),
+
+    #[error("Key not found {0}")]
+    KeyNotFound(String),
 
     #[error("Insufficient funds")]
     InsufficientFunds,

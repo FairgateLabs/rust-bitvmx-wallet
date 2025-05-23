@@ -98,7 +98,7 @@ fn main() {
                     process::exit(1);
                 }
             };
-            match wallet.fund_address(identifier, funding_id, to_pubkey, *amount, *fee) {
+            match wallet.fund_address(identifier, funding_id, to_pubkey, &amount, *fee) {
                 Ok(txid) => println!("Funded address, txid: {txid}"),
                 Err(e) => eprintln!("Error: {e}"),
             }

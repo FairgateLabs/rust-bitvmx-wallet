@@ -132,13 +132,14 @@ impl Wallet {
         identifier: &str,
         funding_id: &str,
         to_pubkey: PublicKey,
-        amount: u64,
+        amount: &Vec<u64>,
         fee: u64,
     ) -> Result<Txid, WalletError> {
         let key = self.pending_transfer(identifier, funding_id);
         if self.store.has_key(&key)? {
             return Err(WalletError::TransferInProgress(key));
         }
+        let change_vout = amount.len() as u32;
 
         let origin_pub_key: PublicKey = self
             .store
@@ -163,7 +164,7 @@ impl Wallet {
 
         let txid = result.compute_txid();
 
-        self.store.set(key, (txid, 1, change), None)?;
+        self.store.set(key, (txid, change_vout, change), None)?;
 
         Ok(txid)
     }
@@ -199,34 +200,36 @@ impl Wallet {
         origin_amount: u64,
         origin_pubkey: PublicKey,
         to_pubkey: PublicKey,
-        amount: u64,
+        amount: &Vec<u64>,
         fee: u64,
     ) -> Result<(Transaction, u64), WalletError> {
         let total_amount = origin_amount;
 
-        if total_amount < amount + fee {
+        if total_amount < amount.iter().sum::<u64>() + fee {
             return Err(WalletError::InsufficientFunds);
         }
 
-        let change = total_amount - amount - fee;
+        let change = total_amount - amount.iter().sum::<u64>() - fee;
 
         info!("Public key: {origin_pubkey}");
         let external_output = OutputType::segwit_key(total_amount, &origin_pubkey)?;
         info!("External output: {:?}", external_output);
-        let transfer_output = OutputType::segwit_key(amount, &to_pubkey)?;
 
         let mut protocol = Protocol::new("transfer_tx");
-        protocol
-            .add_external_connection(
-                outpoint.txid,
-                outpoint.vout,
-                external_output,
-                "transfer",
-                &SpendMode::Segwit,
-                &SighashType::ecdsa_all(),
-            )?
-            // Transfer output
-            .add_transaction_output("transfer", &transfer_output)?;
+        protocol.add_external_connection(
+            outpoint.txid,
+            outpoint.vout,
+            external_output,
+            "transfer",
+            &SpendMode::Segwit,
+            &SighashType::ecdsa_all(),
+        )?;
+
+        for value in amount {
+            info!("Amount: {value}");
+            let transfer_output = OutputType::segwit_key(*value, &to_pubkey)?;
+            protocol.add_transaction_output("transfer", &transfer_output)?;
+        }
 
         if change > 0 {
             let change_output = OutputType::segwit_key(change, &origin_pubkey)?;
@@ -362,12 +365,12 @@ mod tests {
         let pk = PublicKey::from_str(
             "038f47dcd43ba6d97fc9ed2e3bba09b175a45fac55f0683e8cf771e8ced4572354",
         )?;
-        wallet.fund_address("wallet_1", "fund_1", pk, 9_000, 1000)?;
+        wallet.fund_address("wallet_1", "fund_1", pk, &vec![9_000], 1000)?;
         wallet.confirm_transfer("wallet_1", "fund_1")?;
         let funds = wallet.list_funds("wallet_1")?;
         info!("Funds: {:?}", funds);
 
-        wallet.fund_address("wallet_1", "fund_1", pk, 89_000, 1000)?;
+        wallet.fund_address("wallet_1", "fund_1", pk, &vec![89_000], 1000)?;
         wallet.confirm_transfer("wallet_1", "fund_1")?;
         let funds = wallet.list_funds("wallet_1")?;
         info!("Funds: {:?}", funds);
@@ -406,12 +409,12 @@ mod tests {
         let pk = PublicKey::from_str(
             "038f47dcd43ba6d97fc9ed2e3bba09b175a45fac55f0683e8cf771e8ced4572354",
         )?;
-        wallet.fund_address("wallet_1", "fund_1", pk, 9_000, 1000)?;
+        wallet.fund_address("wallet_1", "fund_1", pk, &vec![9_000], 1000)?;
         wallet.confirm_transfer("wallet_1", "fund_1")?;
         let funds = wallet.list_funds("wallet_1")?;
         info!("Funds: {:?}", funds);
 
-        wallet.fund_address("wallet_1", "fund_1", pk, 89_000, 1000)?;
+        wallet.fund_address("wallet_1", "fund_1", pk, &vec![89_000], 1000)?;
         wallet.confirm_transfer("wallet_1", "fund_1")?;
         let funds = wallet.list_funds("wallet_1")?;
         info!("Funds: {:?}", funds);

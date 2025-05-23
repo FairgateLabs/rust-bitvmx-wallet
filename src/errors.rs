@@ -30,8 +30,8 @@ pub enum WalletError {
     #[error("Key not found {0}")]
     KeyNotFound(String),
 
-    #[error("Insufficient funds")]
-    InsufficientFunds,
+    #[error("Insufficient funds for: {0}")]
+    InsufficientFunds(String),
 
     #[error("Invalid spending scripts")]
     InvalidSpendingScripts,

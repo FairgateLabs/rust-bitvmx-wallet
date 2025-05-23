@@ -242,7 +242,10 @@ impl Wallet {
         let total_amount = origin_amount;
 
         if total_amount < amount.iter().sum::<u64>() + fee {
-            return Err(WalletError::InsufficientFunds);
+            return Err(WalletError::InsufficientFunds(format!(
+                "Insufficient funds. Available: {total_amount}, Required: {}",
+                amount.iter().sum::<u64>() + fee
+            )));
         }
 
         let change = total_amount - amount.iter().sum::<u64>() - fee;

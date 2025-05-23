@@ -122,24 +122,29 @@ impl Wallet {
         amount: u64,
     ) -> Result<(), WalletError> {
         let key = StoreKey::Funding(identifier.to_string(), funding_id.to_string()).get_key();
+
         if self.store.has_key(&key)? {
             return Err(WalletError::KeyAlreadyExists(key));
         }
+
         self.store.set(key, (outpoint, amount), None)?;
+
         Ok(())
     }
 
     pub fn remove_funding(&self, identifier: &str, funding_id: &str) -> Result<(), WalletError> {
         let key = StoreKey::Funding(identifier.to_string(), funding_id.to_string()).get_key();
-        if self.store.has_key(&key)? {
-            self.store.delete(&key)?;
-            Ok(())
-        } else {
-            Err(WalletError::FundingNotFound(
+
+        if !self.store.has_key(&key)? {
+            return Err(WalletError::FundingNotFound(
                 identifier.to_string(),
                 funding_id.to_string(),
-            ))
+            ));
         }
+
+        self.store.delete(&key)?;
+
+        Ok(())
     }
 
     pub fn fund_address(
@@ -220,12 +225,14 @@ impl Wallet {
     pub fn revert_transfer(&self, identifier: &str, funding_id: &str) -> Result<(), WalletError> {
         let key =
             StoreKey::PendingTransfer(identifier.to_string(), funding_id.to_string()).get_key();
-        if self.store.has_key(&key)? {
-            self.store.delete(&key)?;
-            Ok(())
-        } else {
-            Err(WalletError::KeyNotFound(key))
+
+        if !self.store.has_key(&key)? {
+            return Err(WalletError::KeyNotFound(key));
         }
+
+        self.store.delete(&key)?;
+
+        Ok(())
     }
 
     fn create_transfer_transaction(

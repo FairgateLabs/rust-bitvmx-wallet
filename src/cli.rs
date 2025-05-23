@@ -38,6 +38,7 @@ pub enum Commands {
         identifier: String,
         funding_id: String,
         to_pubkey: String,
+        #[arg(value_delimiter = ',')]
         amount: Vec<u64>,
         fee: u64,
     },

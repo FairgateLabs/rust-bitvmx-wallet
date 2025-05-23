@@ -37,7 +37,12 @@ fn main() {
     };
     config_trace_aux();
 
-    let wallet = match Wallet::new(config, true) {
+    let init_client = match &cli.command {
+        Commands::BtcToSat { .. } => false,
+        _ => true,
+    };
+
+    let wallet = match Wallet::new(config, init_client) {
         Ok(w) => w,
         Err(e) => {
             eprintln!("Failed to initialize wallet: {e}");

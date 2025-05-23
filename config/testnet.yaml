@@ -15,6 +15,7 @@ builder:
 
 key_manager:
   network: testnet
+  key_derivation_seed: 2222beefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeec
 
 key_storage:
   password: secret_password_1

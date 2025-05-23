@@ -37,7 +37,7 @@ fn main() {
     };
     config_trace_aux();
 
-    let wallet = match Wallet::new(config) {
+    let wallet = match Wallet::new(config, true) {
         Ok(w) => w,
         Err(e) => {
             eprintln!("Failed to initialize wallet: {e}");

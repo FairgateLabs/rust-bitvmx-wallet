@@ -8,6 +8,7 @@ use protocol_builder::{
 };
 use std::rc::Rc;
 use storage_backend::storage::{KeyValueStore, Storage};
+use tracing::info;
 
 pub struct Wallet {
     store: Rc<Storage>,
@@ -207,7 +208,9 @@ impl Wallet {
 
         let change = total_amount - amount - fee;
 
+        info!("Public key: {origin_pubkey}");
         let external_output = OutputType::segwit_key(total_amount, &origin_pubkey)?;
+        info!("External output: {:?}", external_output);
         let transfer_output = OutputType::segwit_key(amount, &to_pubkey)?;
 
         let mut protocol = Protocol::new("transfer_tx");

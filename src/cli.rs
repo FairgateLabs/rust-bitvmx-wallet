@@ -4,6 +4,10 @@ use clap::{Parser, Subcommand};
 #[command(name = "bitvmx-wallet")]
 #[command(about = "A simple Bitcoin wallet CLI", long_about = None)]
 pub struct Cli {
+    /// Path to the config file (YAML)
+    #[arg(short, long, global = true, default_value = "config/regtest.yaml")]
+    pub config: String,
+
     #[command(subcommand)]
     pub command: Commands,
 }
@@ -57,4 +61,6 @@ pub enum Commands {
         funding_id: String,
         amount: u64,
     },
+    /// Convert BTC to SATS
+    BtcToSat { btc: f64 },
 }

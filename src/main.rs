@@ -1,19 +1,33 @@
 mod cli;
 pub mod config;
-mod errors;
-mod wallet;
+pub mod errors;
+pub mod wallet;
 
 use clap::Parser;
 use cli::{Cli, Commands};
 use std::process;
+use tracing_subscriber::EnvFilter;
 use wallet::Wallet;
+
+fn config_trace_aux() {
+    let default_modules = ["info"];
+
+    let filter = EnvFilter::builder()
+        .parse(default_modules.join(","))
+        .expect("Invalid filter");
+
+    tracing_subscriber::fmt()
+        .with_target(true)
+        .with_env_filter(filter)
+        .init();
+}
 
 fn main() {
     let cli = Cli::parse();
 
-    // Load config (adjust path or logic as needed)
+    // Use the config file specified by the user
     let config = match bitvmx_settings::settings::load_config_file::<crate::config::Config>(Some(
-        "config/regtest.yaml".to_string(),
+        cli.config.clone(),
     )) {
         Ok(cfg) => cfg,
         Err(e) => {
@@ -21,6 +35,7 @@ fn main() {
             process::exit(1);
         }
     };
+    config_trace_aux();
 
     let wallet = match Wallet::new(config) {
         Ok(w) => w,
@@ -122,5 +137,10 @@ fn main() {
             Ok(_) => println!("Regtest funded"),
             Err(e) => eprintln!("Error: {e}"),
         },
+        Commands::BtcToSat { btc } => {
+            let amount = bitcoin::Amount::from_btc(*btc).unwrap();
+            let sats = amount.to_sat();
+            println!("Converted {btc} BTC to {sats} Satoshis");
+        }
     }
 }

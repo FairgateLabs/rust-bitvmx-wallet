@@ -51,12 +51,10 @@ fn main() {
     };
 
     match &cli.command {
-        Commands::CreateKey { identifier, index } => {
-            match wallet.create_wallet(identifier, *index) {
-                Ok(pk) => println!("Created key: {pk}"),
-                Err(e) => eprintln!("Error: {e}"),
-            }
-        }
+        Commands::CreateKey { identifier } => match wallet.create_wallet(identifier) {
+            Ok(pk) => println!("Created key: {pk}"),
+            Err(e) => eprintln!("Error: {e}"),
+        },
         Commands::ImportKey {
             identifier,
             secret_key,

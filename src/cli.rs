@@ -15,7 +15,7 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     /// Create a new secret key
-    CreateKey { identifier: String, index: u32 },
+    CreateKey { identifier: String },
     /// Import a secret key
     ImportKey {
         identifier: String,

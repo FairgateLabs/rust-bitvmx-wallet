@@ -19,6 +19,27 @@ pub struct Wallet {
     regtest_address: Option<Address>,
 }
 
+enum StoreKey {
+    Wallet(String),
+    Funding(String, String),
+    PendingTransfer(String, String),
+}
+
+impl StoreKey {
+    pub fn get_key(&self) -> String {
+        let base = "wallet";
+        match self {
+            Self::Wallet(identifier) => format!("{base}/{identifier}"),
+            Self::Funding(identifier, funding_id) => {
+                format!("{base}/{identifier}/funding/{funding_id}")
+            }
+            Self::PendingTransfer(identifier, funding_id) => {
+                format!("{base}/{identifier}/transfers/{funding_id}")
+            }
+        }
+    }
+}
+
 impl Wallet {
     pub fn new(config: Config, with_client: bool) -> Result<Wallet, WalletError> {
         let storage = Rc::new(Storage::new(&config.storage)?);
@@ -58,35 +79,25 @@ impl Wallet {
         })
     }
 
-    fn key_identifier(&self, identifier: &str) -> String {
-        format!("wallet/{}", identifier)
-    }
-
-    fn key_funding(&self, identifier: &str, funding_id: &str) -> String {
-        format!("wallet/{}/funding/{}", identifier, funding_id)
-    }
-
-    fn pending_transfer(&self, identifier: &str, funding_id: &str) -> String {
-        format!("wallet/{}/transfers/{}", identifier, funding_id)
-    }
-
     pub fn create_secret_key(
         &self,
         identifier: &str,
         index: u32,
     ) -> Result<PublicKey, WalletError> {
-        if self.store.has_key(&self.key_identifier(identifier))? {
+        let key = StoreKey::Wallet(identifier.to_string()).get_key();
+        if self.store.has_key(&key)? {
             return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
         let public = self.key_manager.derive_keypair(index)?;
 
-        self.store
-            .set(self.key_identifier(identifier), public.clone(), None)?;
+        self.store.set(key, public.clone(), None)?;
         Ok(public)
     }
 
     pub fn import_secret_key(&self, identifier: &str, secret_key: &str) -> Result<(), WalletError> {
-        if self.store.has_key(&self.key_identifier(identifier))? {
+        let key = StoreKey::Wallet(identifier.to_string()).get_key();
+
+        if self.store.has_key(&key)? {
             return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
 
@@ -94,8 +105,7 @@ impl Wallet {
             .key_manager
             .import_secret_key(secret_key, self.network)?;
 
-        self.store
-            .set(self.key_identifier(identifier), wallet_pub_key, None)?;
+        self.store.set(key, wallet_pub_key, None)?;
 
         Ok(())
     }
@@ -107,7 +117,7 @@ impl Wallet {
         outpoint: OutPoint,
         amount: u64,
     ) -> Result<(), WalletError> {
-        let key = self.key_funding(identifier, funding_id);
+        let key = StoreKey::Funding(identifier.to_string(), funding_id.to_string()).get_key();
         if self.store.has_key(&key)? {
             return Err(WalletError::KeyAlreadyExists(key));
         }
@@ -116,7 +126,7 @@ impl Wallet {
     }
 
     pub fn remove_funding(&self, identifier: &str, funding_id: &str) -> Result<(), WalletError> {
-        let key = self.key_funding(identifier, funding_id);
+        let key = StoreKey::Funding(identifier.to_string(), funding_id.to_string()).get_key();
         if self.store.has_key(&key)? {
             self.store.delete(&key)?;
             Ok(())
@@ -138,23 +148,28 @@ impl Wallet {
         output_is_taproot: bool,
         auto_confirm: bool,
     ) -> Result<Txid, WalletError> {
-        let key = self.pending_transfer(identifier, funding_id);
-        if self.store.has_key(&key)? {
-            return Err(WalletError::TransferInProgress(key));
+        let pending_key =
+            StoreKey::PendingTransfer(identifier.to_string(), funding_id.to_string()).get_key();
+        if self.store.has_key(&pending_key)? {
+            return Err(WalletError::TransferInProgress(pending_key));
         }
         let change_vout = amount.len() as u32;
 
+        let key = StoreKey::Wallet(identifier.to_string()).get_key();
         let origin_pub_key: PublicKey = self
             .store
-            .get(&self.key_identifier(identifier))?
+            .get(&key)?
             .ok_or(WalletError::KeyNotFound(identifier.to_string()))?;
-        let (outpoint, origin_amount): (OutPoint, u64) = self
-            .store
-            .get(&self.key_funding(identifier, funding_id))?
-            .ok_or(WalletError::FundingNotFound(
-                identifier.to_string(),
-                funding_id.to_string(),
-            ))?;
+
+        let key_funding =
+            StoreKey::Funding(identifier.to_string(), funding_id.to_string()).get_key();
+        let (outpoint, origin_amount): (OutPoint, u64) =
+            self.store
+                .get(&key_funding)?
+                .ok_or(WalletError::FundingNotFound(
+                    identifier.to_string(),
+                    funding_id.to_string(),
+                ))?;
 
         let (result, change) = self.create_transfer_transaction(
             outpoint,
@@ -168,7 +183,8 @@ impl Wallet {
 
         let txid = result.compute_txid();
 
-        self.store.set(key, (txid, change_vout, change), None)?;
+        self.store
+            .set(pending_key, (txid, change_vout, change), None)?;
 
         if auto_confirm {
             self.confirm_transfer(identifier, funding_id)?;
@@ -178,7 +194,8 @@ impl Wallet {
     }
 
     pub fn confirm_transfer(&self, identifier: &str, funding_id: &str) -> Result<(), WalletError> {
-        let key = self.pending_transfer(identifier, funding_id);
+        let key =
+            StoreKey::PendingTransfer(identifier.to_string(), funding_id.to_string()).get_key();
         if let Some((txid, vout, change)) = self.store.get(&key)? {
             self.store.delete(&key)?;
             self.remove_funding(identifier, funding_id)?;
@@ -193,7 +210,8 @@ impl Wallet {
     }
 
     pub fn revert_transfer(&self, identifier: &str, funding_id: &str) -> Result<(), WalletError> {
-        let key = self.pending_transfer(identifier, funding_id);
+        let key =
+            StoreKey::PendingTransfer(identifier.to_string(), funding_id.to_string()).get_key();
         if self.store.has_key(&key)? {
             self.store.delete(&key)?;
             Ok(())
@@ -283,9 +301,10 @@ impl Wallet {
         amount: u64,
     ) -> Result<(), WalletError> {
         if let Some(bitcoin_client) = &self.bitcoin_client {
+            let key = StoreKey::Wallet(identifier.to_string()).get_key();
             let origin_pub_key: PublicKey = self
                 .store
-                .get(&self.key_identifier(identifier))?
+                .get(&key)?
                 .ok_or(WalletError::KeyNotFound(identifier.to_string()))?;
             let address = bitcoin_client.get_new_address(origin_pub_key, self.network);
             let (tx, vout) = bitcoin_client.fund_address(&address, Amount::from_sat(amount))?;
@@ -299,7 +318,7 @@ impl Wallet {
         &self,
         identifier: &str,
     ) -> Result<Vec<(String, OutPoint, u64)>, WalletError> {
-        let key = self.key_funding(identifier, "");
+        let key = StoreKey::Funding(identifier.to_string(), "".to_string()).get_key();
         let mut funds = Vec::new();
         for identifier_key in self.store.partial_compare_keys(&key)? {
             if let Some((outpoint, value)) = self.store.get(&identifier_key)? {
@@ -373,22 +392,41 @@ mod tests {
         let wallet = Wallet::new(config, true)?;
         wallet.mine(101)?;
 
-        wallet.create_secret_key("wallet_1", 0)?;
-        wallet.regtest_fund("wallet_1", "fund_1", 100_000)?;
-        let funds = wallet.list_funds("wallet_1")?;
+        let wallet_name = "wallet_1";
+        let funding_id = "fund_1";
+
+        wallet.create_secret_key(wallet_name, 0)?;
+        wallet.regtest_fund(wallet_name, funding_id, 100_000)?;
+        let funds = wallet.list_funds(wallet_name)?;
         info!("Funds: {:?}", funds);
 
         let pk = PublicKey::from_str(
             "038f47dcd43ba6d97fc9ed2e3bba09b175a45fac55f0683e8cf771e8ced4572354",
         )?;
-        wallet.fund_address("wallet_1", "fund_1", pk, &vec![9_000], 1000, false, false)?;
-        wallet.confirm_transfer("wallet_1", "fund_1")?;
-        let funds = wallet.list_funds("wallet_1")?;
+        wallet.fund_address(
+            wallet_name,
+            funding_id,
+            pk,
+            &vec![9_000],
+            1000,
+            false,
+            false,
+        )?;
+        wallet.confirm_transfer(wallet_name, funding_id)?;
+        let funds = wallet.list_funds(wallet_name)?;
         info!("Funds: {:?}", funds);
 
-        wallet.fund_address("wallet_1", "fund_1", pk, &vec![89_000], 1000, false, false)?;
-        wallet.confirm_transfer("wallet_1", "fund_1")?;
-        let funds = wallet.list_funds("wallet_1")?;
+        wallet.fund_address(
+            wallet_name,
+            funding_id,
+            pk,
+            &vec![89_000],
+            1000,
+            false,
+            false,
+        )?;
+        wallet.confirm_transfer(wallet_name, funding_id)?;
+        let funds = wallet.list_funds(wallet_name)?;
         info!("Funds: {:?}", funds);
 
         bitcoind.stop()?;
@@ -409,30 +447,49 @@ mod tests {
 
         let wallet = Wallet::new(config, false)?;
 
-        wallet.create_secret_key("wallet_1", 0)?;
+        let wallet_name = "wallet_1";
+        let funding_id = "fund_1";
+
+        wallet.create_secret_key(wallet_name, 0)?;
         wallet.add_funding(
-            "wallet_1",
-            "fund_1",
+            wallet_name,
+            funding_id,
             OutPoint {
                 txid: Txid::all_zeros(),
                 vout: 1,
             },
             100_000,
         )?;
-        let funds = wallet.list_funds("wallet_1")?;
+        let funds = wallet.list_funds(wallet_name)?;
         info!("Funds: {:?}", funds);
 
         let pk = PublicKey::from_str(
             "038f47dcd43ba6d97fc9ed2e3bba09b175a45fac55f0683e8cf771e8ced4572354",
         )?;
-        wallet.fund_address("wallet_1", "fund_1", pk, &vec![9_000], 1000, false, false)?;
-        wallet.confirm_transfer("wallet_1", "fund_1")?;
-        let funds = wallet.list_funds("wallet_1")?;
+        wallet.fund_address(
+            wallet_name,
+            funding_id,
+            pk,
+            &vec![9_000],
+            1000,
+            false,
+            false,
+        )?;
+        wallet.confirm_transfer(wallet_name, funding_id)?;
+        let funds = wallet.list_funds(wallet_name)?;
         info!("Funds: {:?}", funds);
 
-        wallet.fund_address("wallet_1", "fund_1", pk, &vec![89_000], 1000, false, false)?;
-        wallet.confirm_transfer("wallet_1", "fund_1")?;
-        let funds = wallet.list_funds("wallet_1")?;
+        wallet.fund_address(
+            wallet_name,
+            funding_id,
+            pk,
+            &vec![89_000],
+            1000,
+            false,
+            false,
+        )?;
+        wallet.confirm_transfer(wallet_name, funding_id)?;
+        let funds = wallet.list_funds(wallet_name)?;
         info!("Funds: {:?}", funds);
 
         Ok(())

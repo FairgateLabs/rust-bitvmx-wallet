@@ -20,6 +20,7 @@ pub struct Wallet {
 }
 
 enum StoreKey {
+    CreateWalletIndex,
     Wallet(String),
     Funding(String, String),
     PendingTransfer(String, String),
@@ -36,6 +37,7 @@ impl StoreKey {
             Self::PendingTransfer(identifier, funding_id) => {
                 format!("{base}/{identifier}/transfers/{funding_id}")
             }
+            Self::CreateWalletIndex => format!("{base}/index"),
         }
     }
 }
@@ -79,19 +81,27 @@ impl Wallet {
         })
     }
 
-    pub fn create_wallet(&self, identifier: &str, index: u32) -> Result<PublicKey, WalletError> {
+    pub fn create_wallet(&self, identifier: &str) -> Result<PublicKey, WalletError> {
         let key = StoreKey::Wallet(identifier.to_string()).get_key();
 
         if self.store.has_key(&key)? {
             return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
 
-        //TODO: check if we can hardcode the index to 0 here. Because is for receiving funds
+        let index = self.get_wallet_index()?;
         let public = self.key_manager.derive_keypair(index)?;
 
         self.store.set(key, public.clone(), None)?;
 
         Ok(public)
+    }
+
+    pub fn get_wallet_index(&self) -> Result<u32, WalletError> {
+        let key_index = StoreKey::CreateWalletIndex.get_key();
+        let index = self.store.get(&key_index)?.unwrap_or(0);
+        // Increment the index to save for next wallet
+        self.store.set(key_index, index + 1, None)?;
+        Ok(index)
     }
 
     pub fn create_wallet_from_secret(
@@ -122,24 +132,29 @@ impl Wallet {
         amount: u64,
     ) -> Result<(), WalletError> {
         let key = StoreKey::Funding(identifier.to_string(), funding_id.to_string()).get_key();
+
         if self.store.has_key(&key)? {
             return Err(WalletError::KeyAlreadyExists(key));
         }
+
         self.store.set(key, (outpoint, amount), None)?;
+
         Ok(())
     }
 
     pub fn remove_funding(&self, identifier: &str, funding_id: &str) -> Result<(), WalletError> {
         let key = StoreKey::Funding(identifier.to_string(), funding_id.to_string()).get_key();
-        if self.store.has_key(&key)? {
-            self.store.delete(&key)?;
-            Ok(())
-        } else {
-            Err(WalletError::FundingNotFound(
+
+        if !self.store.has_key(&key)? {
+            return Err(WalletError::FundingNotFound(
                 identifier.to_string(),
                 funding_id.to_string(),
-            ))
+            ));
         }
+
+        self.store.delete(&key)?;
+
+        Ok(())
     }
 
     pub fn fund_address(
@@ -220,12 +235,14 @@ impl Wallet {
     pub fn revert_transfer(&self, identifier: &str, funding_id: &str) -> Result<(), WalletError> {
         let key =
             StoreKey::PendingTransfer(identifier.to_string(), funding_id.to_string()).get_key();
-        if self.store.has_key(&key)? {
-            self.store.delete(&key)?;
-            Ok(())
-        } else {
-            Err(WalletError::KeyNotFound(key))
+
+        if !self.store.has_key(&key)? {
+            return Err(WalletError::KeyNotFound(key));
         }
+
+        self.store.delete(&key)?;
+
+        Ok(())
     }
 
     fn create_transfer_transaction(
@@ -448,7 +465,7 @@ mod tests {
         let wallet_name = "wallet_1";
         let funding_id = "fund_1";
 
-        wallet.create_wallet(wallet_name, 0)?;
+        wallet.create_wallet(wallet_name)?;
         wallet.regtest_fund(wallet_name, funding_id, 100_000)?;
         let funds = wallet.list_funds(wallet_name)?;
         assert_eq!(funds.len(), 1);
@@ -498,7 +515,7 @@ mod tests {
         let wallet_name = "wallet_1";
         let funding_id = "fund_1";
 
-        wallet.create_wallet(wallet_name, 0)?;
+        wallet.create_wallet(wallet_name)?;
         wallet.add_funding(
             wallet_name,
             funding_id,
@@ -553,8 +570,9 @@ mod tests {
 
         // Create 3 wallets with different identifiers and indices
         let wallet_names = vec!["wallet1", "wallet2", "wallet3"];
-        for (i, name) in wallet_names.iter().enumerate() {
-            wallet.create_wallet(name, i as u32)?;
+
+        for name in wallet_names.iter() {
+            wallet.create_wallet(name)?;
         }
 
         let wallets = wallet.get_wallets()?;

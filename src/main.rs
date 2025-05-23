@@ -52,7 +52,7 @@ fn main() {
 
     match &cli.command {
         Commands::CreateKey { identifier, index } => {
-            match wallet.create_secret_key(identifier, *index) {
+            match wallet.create_wallet(identifier, *index) {
                 Ok(pk) => println!("Created key: {pk}"),
                 Err(e) => eprintln!("Error: {e}"),
             }

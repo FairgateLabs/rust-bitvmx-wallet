@@ -29,7 +29,7 @@ impl StoreKey {
     pub fn get_key(&self) -> String {
         let base = "wallet";
         match self {
-            Self::Wallet(identifier) => format!("{base}/{identifier}"),
+            Self::Wallet(identifier) => format!("{base}/name/{identifier}"),
             Self::Funding(identifier, funding_id) => {
                 format!("{base}/{identifier}/funding/{funding_id}")
             }
@@ -79,11 +79,7 @@ impl Wallet {
         })
     }
 
-    pub fn create_secret_key(
-        &self,
-        identifier: &str,
-        index: u32,
-    ) -> Result<PublicKey, WalletError> {
+    pub fn create_wallet(&self, identifier: &str, index: u32) -> Result<PublicKey, WalletError> {
         let key = StoreKey::Wallet(identifier.to_string()).get_key();
         if self.store.has_key(&key)? {
             return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
@@ -150,9 +146,11 @@ impl Wallet {
     ) -> Result<Txid, WalletError> {
         let pending_key =
             StoreKey::PendingTransfer(identifier.to_string(), funding_id.to_string()).get_key();
+
         if self.store.has_key(&pending_key)? {
             return Err(WalletError::TransferInProgress(pending_key));
         }
+
         let change_vout = amount.len() as u32;
 
         let key = StoreKey::Wallet(identifier.to_string()).get_key();
@@ -331,6 +329,23 @@ impl Wallet {
         }
         Ok(funds)
     }
+
+    pub fn get_wallets(&self) -> Result<Vec<(String, PublicKey)>, WalletError> {
+        let key = StoreKey::Wallet("".to_string()).get_key();
+        let mut wallets = Vec::new();
+
+        for identifier_key in self.store.partial_compare_keys(&key)? {
+            let identifier = identifier_key.strip_prefix(&key).unwrap().to_string();
+            let pubkey: PublicKey = self
+                .store
+                .get(&identifier_key)?
+                .ok_or(WalletError::KeyNotFound(identifier_key))?;
+
+            wallets.push((identifier, pubkey));
+        }
+
+        Ok(wallets)
+    }
 }
 
 #[cfg(test)]
@@ -395,10 +410,11 @@ mod tests {
         let wallet_name = "wallet_1";
         let funding_id = "fund_1";
 
-        wallet.create_secret_key(wallet_name, 0)?;
+        wallet.create_wallet(wallet_name, 0)?;
         wallet.regtest_fund(wallet_name, funding_id, 100_000)?;
         let funds = wallet.list_funds(wallet_name)?;
-        info!("Funds: {:?}", funds);
+        assert_eq!(funds.len(), 1);
+        assert_eq!(funds[0].2, 100_000);
 
         let pk = PublicKey::from_str(
             "038f47dcd43ba6d97fc9ed2e3bba09b175a45fac55f0683e8cf771e8ced4572354",
@@ -450,7 +466,7 @@ mod tests {
         let wallet_name = "wallet_1";
         let funding_id = "fund_1";
 
-        wallet.create_secret_key(wallet_name, 0)?;
+        wallet.create_wallet(wallet_name, 0)?;
         wallet.add_funding(
             wallet_name,
             funding_id,
@@ -491,6 +507,35 @@ mod tests {
         wallet.confirm_transfer(wallet_name, funding_id)?;
         let funds = wallet.list_funds(wallet_name)?;
         info!("Funds: {:?}", funds);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_wallets() -> Result<(), anyhow::Error> {
+        config_trace();
+
+        let config = bitvmx_settings::settings::load_config_file::<Config>(Some(
+            "config/regtest.yaml".to_string(),
+        ))?;
+
+        clear_db(&config.storage.path);
+        clear_db(&config.key_storage.path);
+
+        let wallet = Wallet::new(config, false)?;
+
+        // Create 3 wallets with different identifiers and indices
+        let wallet_names = vec!["wallet1", "wallet2", "wallet3"];
+        for (i, name) in wallet_names.iter().enumerate() {
+            wallet.create_wallet(name, i as u32)?;
+        }
+
+        let wallets = wallet.get_wallets()?;
+
+        // Check if all expected wallet names are present
+        for (wallet_name, _) in wallets {
+            assert!(wallet_names.contains(&wallet_name.as_str()));
+        }
 
         Ok(())
     }

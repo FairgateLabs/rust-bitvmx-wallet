@@ -1,33 +1,56 @@
-use crate::errors::WalletError;
-use bitcoin::{network, OutPoint, PublicKey, Transaction, Txid};
-use bitvmx_bitcoin_rpc::{
-    bitcoin_client::{BitcoinClient, BitcoinClientApi},
-    rpc_config::RpcConfig,
-};
-use key_manager::key_manager::KeyManager;
+use crate::{config::Config, errors::WalletError};
+use bitcoin::{network, Address, Amount, OutPoint, PublicKey, Transaction, Txid};
+use bitvmx_bitcoin_rpc::bitcoin_client::{BitcoinClient, BitcoinClientApi};
+use key_manager::{config::KeyManagerConfig, key_manager::KeyManager, key_store::KeyStore};
 use protocol_builder::{
     builder::Protocol,
     types::{input::SighashType, output::SpendMode, InputArgs, OutputType},
 };
-use std::{env, process::id, rc::Rc, str::FromStr};
+use std::rc::Rc;
 use storage_backend::storage::{KeyValueStore, Storage};
 
 pub struct Wallet {
     store: Rc<Storage>,
     key_manager: Rc<KeyManager>,
     network: bitcoin::Network,
+    bitcoin_client: BitcoinClient,
+    regtest_address: Option<Address>,
 }
 
 impl Wallet {
-    pub fn new(
-        store: Rc<Storage>,
-        key_manager: Rc<KeyManager>,
-        network: bitcoin::Network,
-    ) -> Result<Wallet, WalletError> {
+    pub fn new(config: Config) -> Result<Wallet, WalletError> {
+        let storage = Rc::new(Storage::new(&config.storage)?);
+        let key_manager_config = KeyManagerConfig::new(
+            config.bitcoin.network.to_string(),
+            Some("1111beefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef".to_string()),
+            None,
+            None,
+        );
+        let key_store = KeyStore::new(storage.clone());
+        let key_manager = Rc::new(KeyManager::new_from_config(
+            &key_manager_config,
+            key_store,
+            storage.clone(),
+        )?);
+
+        let bitcoin_client = BitcoinClient::new_from_config(&config.bitcoin)?;
+
+        let regtest_address = if network::Network::Regtest == config.bitcoin.network {
+            Some(
+                bitcoin_client
+                    .init_wallet(bitcoin::Network::Regtest, "test_wallet")
+                    .unwrap(),
+            )
+        } else {
+            None
+        };
+
         Ok(Self {
-            store,
+            store: storage,
             key_manager,
-            network,
+            network: config.bitcoin.network,
+            bitcoin_client,
+            regtest_address,
         })
     }
 
@@ -41,6 +64,21 @@ impl Wallet {
 
     fn pending_transfer(&self, identifier: &str, funding_id: &str) -> String {
         format!("wallet/{}/transfers/{}", identifier, funding_id)
+    }
+
+    pub fn create_secret_key(
+        &self,
+        identifier: &str,
+        index: u32,
+    ) -> Result<PublicKey, WalletError> {
+        if self.store.has_key(&self.key_identifier(identifier))? {
+            return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
+        }
+        let public = self.key_manager.derive_keypair(index)?;
+
+        self.store
+            .set(self.key_identifier(identifier), public.clone(), None)?;
+        Ok(public)
     }
 
     pub fn import_secret_key(&self, identifier: &str, secret_key: &str) -> Result<(), WalletError> {
@@ -198,8 +236,38 @@ impl Wallet {
         spending_args.push_ecdsa_signature(signature)?;
 
         let result = protocol.transaction_to_send("transfer", &[spending_args])?;
+        self.bitcoin_client.send_transaction(&result)?;
 
         Ok((result, change))
+    }
+
+    pub fn mine(&self, num_blocks: u64) -> Result<(), WalletError> {
+        if let Some(address) = &self.regtest_address {
+            self.bitcoin_client
+                .mine_blocks_to_address(num_blocks, &address)?;
+        }
+        Ok(())
+    }
+
+    pub fn regtest_fund(
+        &self,
+        identifier: &str,
+        funding_id: &str,
+        amount: u64,
+    ) -> Result<(), WalletError> {
+        let origin_pub_key: PublicKey = self
+            .store
+            .get(&self.key_identifier(identifier))?
+            .ok_or(WalletError::KeyNotFound(identifier.to_string()))?;
+        let address = self
+            .bitcoin_client
+            .get_new_address(origin_pub_key, self.network);
+        let (tx, vout) = self
+            .bitcoin_client
+            .fund_address(&address, Amount::from_sat(amount))?;
+        let txid = tx.compute_txid();
+        self.add_funding(identifier, funding_id, OutPoint { txid, vout }, amount)?;
+        Ok(())
     }
 
     pub fn list_funds(
@@ -223,17 +291,50 @@ impl Wallet {
 
 #[cfg(test)]
 mod tests {
-    use bitcoin::Network;
+    use std::{str::FromStr, sync::Once};
+
     use bitcoind::bitcoind::Bitcoind;
-    use key_manager::{config::KeyManagerConfig, key_store::KeyStore};
+    use tracing::info;
+    use tracing_subscriber::EnvFilter;
 
     use super::*;
-    use crate::config::Config;
     use anyhow::{Ok, Result};
 
+    static INIT: Once = Once::new();
+
+    pub fn config_trace() {
+        INIT.call_once(|| {
+            config_trace_aux();
+        });
+    }
+
+    fn config_trace_aux() {
+        let default_modules = ["info"];
+
+        let filter = EnvFilter::builder()
+            .parse(default_modules.join(","))
+            .expect("Invalid filter");
+
+        tracing_subscriber::fmt()
+            .with_target(true)
+            .with_env_filter(filter)
+            .init();
+    }
+
+    fn clear_db(path: &str) {
+        let _ = std::fs::remove_dir_all(path);
+    }
     #[test]
+    #[ignore]
     fn test_fund_address() -> Result<(), anyhow::Error> {
-        let config = bitvmx_settings::settings::load::<Config>()?;
+        config_trace();
+
+        let config = bitvmx_settings::settings::load_config_file::<Config>(Some(
+            "config/regtest.yaml".to_string(),
+        ))?;
+
+        clear_db(&config.storage.path);
+        clear_db(&config.key_storage.path);
 
         let bitcoind = Bitcoind::new(
             "bitcoin-regtest",
@@ -243,47 +344,28 @@ mod tests {
 
         bitcoind.start()?;
 
-        let bitcoin_client = BitcoinClient::new_from_config(&config.bitcoin)?;
-        let wallet = bitcoin_client.init_wallet(Network::Regtest, "test_wallet");
+        let wallet = Wallet::new(config)?;
+        wallet.mine(101)?;
 
-        if wallet.is_ok() {
-            let address = wallet.unwrap();
-            bitcoin_client.mine_blocks_to_address(100, &address)?;
-        }
+        wallet.create_secret_key("wallet_1", 0)?;
+        wallet.regtest_fund("wallet_1", "fund_1", 100_000)?;
+        let funds = wallet.list_funds("wallet_1")?;
+        info!("Funds: {:?}", funds);
 
-        let storage = Rc::new(Storage::new(&config.storage)?);
-        let key_manager_config =
-            KeyManagerConfig::new(config.bitcoin.network.to_string(), None, None, None);
-        let key_store = KeyStore::new(storage.clone());
-        let key_manager = Rc::new(KeyManager::new_from_config(
-            &key_manager_config,
-            key_store,
-            storage.clone(),
-        )?);
-
-        let wallet = Wallet::new(
-            config.bitcoin,
-            storage,
-            key_manager.clone(),
-            WalletConfig::new("some-private-key".to_string()),
+        let pk = PublicKey::from_str(
+            "038f47dcd43ba6d97fc9ed2e3bba09b175a45fac55f0683e8cf771e8ced4572354",
         )?;
+        wallet.fund_address("wallet_1", "fund_1", pk, 9_000, 1000)?;
+        wallet.confirm_transfer("wallet_1", "fund_1")?;
+        let funds = wallet.list_funds("wallet_1")?;
+        info!("Funds: {:?}", funds);
 
-        let funding_txid =
-            Txid::from_str("9946702831bccfaa40c8a9018a35b8633031201ccb85ca2e9648ad5ec8892d26")
-                .unwrap(); // Replace with the correct txid
-        let vout = 10; // Replace with the correct vout
-        let amount = wallet
-            .bitcoin_client
-            .get_tx_out(&funding_txid, vout)
-            .unwrap()
-            .value
-            .to_sat()
-            / 10;
+        wallet.fund_address("wallet_1", "fund_1", pk, 89_000, 1000)?;
+        wallet.confirm_transfer("wallet_1", "fund_1")?;
+        let funds = wallet.list_funds("wallet_1")?;
+        info!("Funds: {:?}", funds);
 
-        let result = wallet.fund_address(wallet.pub_key, amount);
-        assert!(result.is_ok(), "Failed to fund address: {:?}", result.err());
-        println!("Transaction ID: {}", result.unwrap());
-
+        bitcoind.stop()?;
         Ok(())
     }
 }

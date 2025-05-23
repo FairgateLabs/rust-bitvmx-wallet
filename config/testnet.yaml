@@ -18,7 +18,7 @@ key_manager:
 
 key_storage:
   password: secret_password_1
-  path: /tmp/development/keys.db
+  path: /tmp/testnet/wallet/keys.db
 
 storage:
-  path: /tmp/development/storage.db
+  path: /tmp/testnet/wallet/storage.db

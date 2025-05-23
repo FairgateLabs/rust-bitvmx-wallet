@@ -230,7 +230,7 @@ impl Wallet {
         for value in amount {
             info!("Amount: {value}");
             let transfer_output = if output_is_taproot {
-                 let sig_check = scripts::check_aggregated_signature(&to_pubkey, SignMode::Aggregate);
+                let sig_check = scripts::check_aggregated_signature(&to_pubkey, SignMode::Aggregate);
                 OutputType::taproot(*value, &to_pubkey, &[sig_check], &vec![])?
             }
             else {

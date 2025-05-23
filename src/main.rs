@@ -95,7 +95,7 @@ fn main() {
             to_pubkey,
             amount,
             fee,
-            output_is_taproot,
+            taproot: output_is_taproot,
         } => {
             let to_pubkey = match to_pubkey.parse() {
                 Ok(pk) => pk,
@@ -104,7 +104,14 @@ fn main() {
                     process::exit(1);
                 }
             };
-            match wallet.fund_address(identifier, funding_id, to_pubkey, &amount, *fee, *output_is_taproot) {
+            match wallet.fund_address(
+                identifier,
+                funding_id,
+                to_pubkey,
+                &amount,
+                *fee,
+                *output_is_taproot,
+            ) {
                 Ok(txid) => println!("Funded address, txid: {txid}"),
                 Err(e) => eprintln!("Error: {e}"),
             }

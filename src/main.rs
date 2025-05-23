@@ -60,7 +60,7 @@ fn main() {
         Commands::ImportKey {
             identifier,
             secret_key,
-        } => match wallet.import_secret_key(identifier, secret_key) {
+        } => match wallet.create_wallet_from_secret(identifier, secret_key) {
             Ok(_) => println!("Imported key for {identifier}"),
             Err(e) => eprintln!("Error: {e}"),
         },

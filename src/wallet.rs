@@ -86,6 +86,7 @@ impl Wallet {
             return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
 
+        //TODO: check if we can hardcode the index to 0 here. Because is for receiving funds
         let public = self.key_manager.derive_keypair(index)?;
 
         self.store.set(key, public.clone(), None)?;
@@ -93,7 +94,11 @@ impl Wallet {
         Ok(public)
     }
 
-    pub fn import_secret_key(&self, identifier: &str, secret_key: &str) -> Result<(), WalletError> {
+    pub fn create_wallet_from_secret(
+        &self,
+        identifier: &str,
+        secret_key: &str,
+    ) -> Result<(), WalletError> {
         let key = StoreKey::Wallet(identifier.to_string()).get_key();
 
         if self.store.has_key(&key)? {

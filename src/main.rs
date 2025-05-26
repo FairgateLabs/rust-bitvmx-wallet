@@ -52,7 +52,7 @@ fn main() {
     };
 
     match &cli.command {
-        Commands::CreateKey { identifier } => match wallet.create_wallet(identifier) {
+        Commands::CreateWallet { identifier } => match wallet.create_wallet(identifier) {
             Ok(pk) => println!("Created key: {pk}"),
             Err(e) => eprintln!("Error: {e}"),
         },
@@ -156,6 +156,12 @@ fn main() {
             let amount = bitcoin::Amount::from_btc(*btc).unwrap();
             let sats = amount.to_sat();
             println!("Converted {btc} BTC to {sats} Satoshis");
+        }
+        Commands::ListWallets => {
+            let wallets = wallet.get_wallets().unwrap();
+            for (name, pubkey) in wallets {
+                println!("Wallet Name: {name} | Wallet ID: {:?}", pubkey);
+            }
         }
     }
 }

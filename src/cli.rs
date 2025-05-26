@@ -15,7 +15,7 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     /// Create a new secret key
-    CreateKey { identifier: String },
+    CreateWallet { identifier: String },
     /// Import a secret key
     ImportKey {
         identifier: String,
@@ -68,4 +68,6 @@ pub enum Commands {
     },
     /// Convert BTC to SATS
     BtcToSat { btc: f64 },
+    /// List wallets
+    ListWallets,
 }

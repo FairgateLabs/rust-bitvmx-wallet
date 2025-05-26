@@ -10,3 +10,19 @@ pub struct WalletConfig {
     pub key_storage: StorageConfig,
     pub storage: StorageConfig,
 }
+
+impl WalletConfig {
+    pub fn new(
+        bitcoin: RpcConfig,
+        key_manager: KeyManagerConfig,
+        key_storage: StorageConfig,
+        storage: StorageConfig,
+    ) -> Result<WalletConfig, anyhow::Error> {
+        Ok(WalletConfig {
+            bitcoin,
+            key_manager,
+            key_storage,
+            storage,
+        })
+    }
+}

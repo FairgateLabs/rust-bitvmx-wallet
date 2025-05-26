@@ -5,6 +5,7 @@ pub mod wallet;
 
 use clap::Parser;
 use cli::{Cli, Commands};
+use config::WalletConfig;
 use std::process;
 use tracing_subscriber::EnvFilter;
 use wallet::Wallet;
@@ -26,15 +27,15 @@ fn main() {
     let cli = Cli::parse();
 
     // Use the config file specified by the user
-    let config = match bitvmx_settings::settings::load_config_file::<crate::config::Config>(Some(
-        cli.config.clone(),
-    )) {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            eprintln!("Failed to load config: {e}");
-            process::exit(1);
-        }
-    };
+    let config =
+        match bitvmx_settings::settings::load_config_file::<WalletConfig>(Some(cli.config.clone()))
+        {
+            Ok(cfg) => cfg,
+            Err(e) => {
+                eprintln!("Failed to load config: {e}");
+                process::exit(1);
+            }
+        };
     config_trace_aux();
 
     let init_client = match &cli.command {

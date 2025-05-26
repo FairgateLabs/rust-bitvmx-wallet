@@ -1,4 +1,4 @@
-use crate::{config::Config, errors::WalletError};
+use crate::{config::WalletConfig, errors::WalletError};
 use bitcoin::{network, Address, Amount, OutPoint, PublicKey, Transaction, Txid};
 use bitvmx_bitcoin_rpc::bitcoin_client::{BitcoinClient, BitcoinClientApi};
 use key_manager::{key_manager::KeyManager, key_store::KeyStore};
@@ -43,7 +43,7 @@ impl StoreKey {
 }
 
 impl Wallet {
-    pub fn new(config: Config, with_client: bool) -> Result<Wallet, WalletError> {
+    pub fn new(config: WalletConfig, with_client: bool) -> Result<Wallet, WalletError> {
         let storage = Rc::new(Storage::new(&config.storage)?);
         let key_store = KeyStore::new(storage.clone());
         let key_manager = Rc::new(KeyManager::new_from_config(
@@ -410,15 +410,16 @@ mod tests {
         (0..10).map(|_| rng.gen_range('a'..='z')).collect()
     }
 
-    fn clean_and_load_config(config_path: &str) -> Result<Config, anyhow::Error> {
+    fn clean_and_load_config(config_path: &str) -> Result<WalletConfig, anyhow::Error> {
         let base_path = "/tmp/wallet";
 
         clear_db(&base_path);
 
         config_trace();
 
-        let mut config =
-            bitvmx_settings::settings::load_config_file::<Config>(Some(config_path.to_string()))?;
+        let mut config = bitvmx_settings::settings::load_config_file::<WalletConfig>(Some(
+            config_path.to_string(),
+        ))?;
 
         let storage_path = format!("{base_path}/{}/storage.db", generate_random_string());
         let key_storage_path = format!("{base_path}/{}/keys.db", generate_random_string());

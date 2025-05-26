@@ -1,7 +1,7 @@
 use crate::{config::WalletConfig, errors::WalletError};
 use bitcoin::{network, Address, Amount, OutPoint, PublicKey, Transaction, Txid};
 use bitvmx_bitcoin_rpc::bitcoin_client::{BitcoinClient, BitcoinClientApi};
-use key_manager::{key_manager::KeyManager, key_store::KeyStore};
+use key_manager::{create_key_manager_from_config, key_manager::KeyManager, key_store::KeyStore};
 use protocol_builder::{
     builder::Protocol,
     scripts::{self, ProtocolScript, SignMode},
@@ -46,7 +46,7 @@ impl Wallet {
     pub fn new(config: WalletConfig, with_client: bool) -> Result<Wallet, WalletError> {
         let storage = Rc::new(Storage::new(&config.storage)?);
         let key_store = KeyStore::new(storage.clone());
-        let key_manager = Rc::new(KeyManager::new_from_config(
+        let key_manager = Rc::new(create_key_manager_from_config(
             &config.key_manager,
             key_store,
             storage.clone(),

@@ -160,7 +160,9 @@ fn main() {
         Commands::ListWallets => {
             let wallets = wallet.get_wallets().unwrap();
             for (name, pubkey) in wallets {
-                println!("Wallet Name: {name} | Wallet ID: {} ", pubkey);
+                println!("Wallet:");
+                println!("- Name: {name}");
+                println!("- Pubkey: {pubkey}");
             }
         }
     }

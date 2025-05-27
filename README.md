@@ -58,6 +58,10 @@ cargo run -- [OPTIONS] <COMMAND>
 - `btc-to-sat <BTC>`  
   Convert BTC to Satoshis.
 
+- `list-wallets`  
+  List all wallet identifiers and their public keys.
+
+
 ## Example
 
 ```sh

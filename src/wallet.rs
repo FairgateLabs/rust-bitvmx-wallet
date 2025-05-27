@@ -1,5 +1,5 @@
 use crate::{config::WalletConfig, errors::WalletError};
-use bitcoin::{network, Address, Amount, OutPoint, PublicKey, Transaction, Txid};
+use bitcoin::{network, Address, Amount, OutPoint, PrivateKey, PublicKey, Transaction, Txid};
 use bitvmx_bitcoin_rpc::bitcoin_client::{BitcoinClient, BitcoinClientApi};
 use key_manager::{key_manager::KeyManager, key_store::KeyStore};
 use protocol_builder::{
@@ -122,6 +122,13 @@ impl Wallet {
         self.store.set(key, wallet_pub_key, None)?;
 
         Ok(())
+    }
+
+    pub fn export_wallet(&self, identifier: &str) -> Result<(PublicKey, PrivateKey), WalletError> {
+        let key = StoreKey::Wallet(identifier.to_string()).get_key();
+        let pubkey: PublicKey = self.store.get(&key)?.ok_or(WalletError::KeyNotFound(key))?;
+        let secret_key = self.key_manager.export_secret(&pubkey)?;
+        Ok((pubkey, secret_key))
     }
 
     pub fn add_funding(

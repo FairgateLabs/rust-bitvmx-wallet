@@ -21,6 +21,8 @@ pub enum Commands {
         identifier: String,
         secret_key: String,
     },
+    /// Export a wallet
+    ExportWallet { identifier: String },
     /// Add funding
     AddFunding {
         identifier: String,

@@ -25,11 +25,14 @@ cargo run -- [OPTIONS] <COMMAND>
 
 ### Commands
 
-- `create-key <IDENTIFIER> <INDEX>`  
+- `create-wallet <IDENTIFIER> <INDEX>`  
   Create a new secret key.
 
 - `import-key <IDENTIFIER> <SECRET_KEY>`  
   Import a secret key.
+
+- `export-wallet <IDENTIFIER>`  
+  Export the public and secret key for a wallet.
 
 - `add-funding <IDENTIFIER> <FUNDING_ID> <OUTPOINT> <AMOUNT>`  
   Add a UTXO as funding.

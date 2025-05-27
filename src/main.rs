@@ -63,6 +63,14 @@ fn main() {
             Ok(_) => println!("Imported key for {identifier}"),
             Err(e) => eprintln!("Error: {e}"),
         },
+        Commands::ExportWallet { identifier } => match wallet.export_wallet(identifier) {
+            Ok((pubkey, secret_key)) => {
+                println!("Wallet {identifier}:");
+                println!(" - Pubkey: {pubkey}");
+                println!(" - Secret key: {secret_key}");
+            }
+            Err(e) => eprintln!("Error: {e}"),
+        },
         Commands::AddFunding {
             identifier,
             funding_id,

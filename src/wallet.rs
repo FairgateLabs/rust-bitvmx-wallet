@@ -256,19 +256,17 @@ impl Wallet {
         output_is_taproot: bool,
         spending_scripts: Option<Vec<Vec<ProtocolScript>>>,
     ) -> Result<(Transaction, u64), WalletError> {
-        let total_amount = origin_amount;
+        let total_amount_to_transfer = amount.iter().sum::<u64>();
 
-        if total_amount < amount.iter().sum::<u64>() + fee {
+        if origin_amount < total_amount_to_transfer + fee {
             return Err(WalletError::InsufficientFunds(format!(
-                "Insufficient funds. Available: {total_amount}, Required: {}",
+                "Insufficient funds. Available: {origin_amount}, Required: {}",
                 amount.iter().sum::<u64>() + fee
             )));
         }
 
-        let change = total_amount - amount.iter().sum::<u64>() - fee;
-
         info!("Public key: {origin_pubkey}");
-        let external_output = OutputType::segwit_key(total_amount, &origin_pubkey)?;
+        let external_output = OutputType::segwit_key(origin_amount, &origin_pubkey)?;
         info!("External output: {:?}", external_output);
 
         let mut protocol = Protocol::new("transfer_tx");
@@ -301,6 +299,8 @@ impl Wallet {
             protocol.add_transaction_output("transfer", &transfer_output)?;
         }
 
+        let change = origin_amount - total_amount_to_transfer - fee;
+
         if change > 0 {
             let change_output = OutputType::segwit_key(change, &origin_pubkey)?;
             protocol.add_transaction_output("transfer", &change_output)?;
@@ -314,6 +314,7 @@ impl Wallet {
         spending_args.push_ecdsa_signature(signature)?;
 
         let result = protocol.transaction_to_send("transfer", &[spending_args])?;
+
         if let Some(bitcoin_client) = &self.bitcoin_client {
             bitcoin_client.send_transaction(&result)?;
         }

@@ -115,9 +115,12 @@ impl Wallet {
             return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
 
-        let wallet_pub_key = self
-            .key_manager
-            .import_secret_key(secret_key, self.network)?;
+        let wallet_pub_key = if secret_key.len() == 64 {
+            self.key_manager
+                .import_secret_key(secret_key, self.network)?
+        } else {
+            self.key_manager.import_private_key(secret_key)?
+        };
 
         self.store.set(key, wallet_pub_key, None)?;
 
@@ -398,7 +401,7 @@ impl Wallet {
 mod tests {
     use super::*;
     use anyhow::{Ok, Result};
-    use bitcoin::{hashes::Hash, key::rand};
+    use bitcoin::{hashes::Hash, key::rand, secp256k1::SecretKey, Network};
     use bitcoind::bitcoind::Bitcoind;
     use std::{str::FromStr, sync::Once};
     use tracing::info;
@@ -419,7 +422,7 @@ mod tests {
     }
 
     fn clean_and_load_config(config_path: &str) -> Result<WalletConfig, anyhow::Error> {
-        let base_path = "/tmp/wallet";
+        let base_path = "/tmp/test_wallet";
 
         clear_db(&base_path);
 
@@ -590,6 +593,29 @@ mod tests {
         for (wallet_name, _) in wallets {
             assert!(wallet_names.contains(&wallet_name.as_str()));
         }
+
+        Ok(())
+    }
+
+    #[test]
+    #[ignore]
+    fn test_create_wallet_from_secret() -> Result<(), anyhow::Error> {
+        let config = clean_and_load_config("config/regtest.yaml")?;
+
+        let wallet = Wallet::new(config, false)?;
+
+        let secret_key_str = "01010101010101010001020304050607ffff0000ffff00006363636363636363";
+        let secret_key = SecretKey::from_str(secret_key_str)?;
+        let private_key = PrivateKey::new(secret_key, Network::Regtest);
+        let private_key_str = private_key.to_string();
+
+        wallet.create_wallet_from_secret("wallet_1", &secret_key_str)?;
+        wallet.create_wallet_from_secret("wallet_2", &private_key_str)?;
+        let (_, secret_key_wallet_1) = wallet.export_wallet("wallet_1")?;
+        let (_, secret_key_wallet_2) = wallet.export_wallet("wallet_2")?;
+
+        assert_eq!(secret_key_wallet_1, private_key);
+        assert_eq!(secret_key_wallet_2, private_key);
 
         Ok(())
     }

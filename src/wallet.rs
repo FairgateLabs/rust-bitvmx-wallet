@@ -5,7 +5,11 @@ use key_manager::{create_key_manager_from_config, key_manager::KeyManager, key_s
 use protocol_builder::{
     builder::Protocol,
     scripts::{self, ProtocolScript, SignMode},
-    types::{input::SighashType, output::SpendMode, InputArgs, OutputType},
+    types::{
+        connection::InputSpec,
+        input::{SighashType, SpendMode},
+        InputArgs, OutputType,
+    },
 };
 use std::rc::Rc;
 use storage_backend::storage::{KeyValueStore, Storage};
@@ -277,13 +281,16 @@ impl Wallet {
         info!("External output: {:?}", external_output);
 
         let mut protocol = Protocol::new("transfer_tx");
-        protocol.add_external_connection(
-            outpoint.txid,
-            outpoint.vout,
-            external_output,
+        protocol.add_external_transaction("origin")?;
+        protocol.add_unkwnoun_outputs("origin", outpoint.vout)?;
+        protocol.add_connection(
+            "origin_tx_transfer",
+            "origin",
+            external_output.clone().into(),
             "transfer",
-            &SpendMode::Segwit,
-            &SighashType::ecdsa_all(),
+            InputSpec::Auto(SighashType::ecdsa_all(), SpendMode::Segwit),
+            None,
+            Some(outpoint.txid),
         )?;
 
         for (i, value) in amount.iter().enumerate() {
@@ -293,11 +300,11 @@ impl Wallet {
                     if spending_scripts.len() != amount.len() {
                         return Err(WalletError::InvalidSpendingScripts);
                     }
-                    OutputType::taproot(*value, &to_pubkey, &spending_scripts[i], &vec![])?
+                    OutputType::taproot(*value, &to_pubkey, &spending_scripts[i])?
                 } else {
                     let sig_check =
                         scripts::check_aggregated_signature(&to_pubkey, SignMode::Aggregate);
-                    OutputType::taproot(*value, &to_pubkey, &[sig_check], &vec![])?
+                    OutputType::taproot(*value, &to_pubkey, &[sig_check])?
                 }
             } else {
                 OutputType::segwit_key(*value, &to_pubkey)?

@@ -408,8 +408,17 @@ impl Wallet {
 mod tests {
     use super::*;
     use anyhow::{Ok, Result};
-    use bitcoin::{hashes::Hash, key::rand, secp256k1::SecretKey, Network};
+    use bitcoin::{
+        hashes::Hash,
+        key::{rand, Secp256k1},
+        secp256k1::{self, SecretKey},
+        Network,
+    };
     use bitcoind::bitcoind::Bitcoind;
+    use musig2::{
+        secp256k1::{PublicKey as MusigPublicKey, SecretKey as MusigSecretKey},
+        KeyAggContext,
+    };
     use std::{str::FromStr, sync::Once};
     use tracing::info;
     use tracing_subscriber::EnvFilter;
@@ -625,5 +634,80 @@ mod tests {
         assert_eq!(secret_key_wallet_2, private_key);
 
         Ok(())
+    }
+
+    #[test]
+    #[ignore]
+    fn test_use_private_musig_to_fund_address() {
+        let config = clean_and_load_config("config/regtest.yaml").unwrap();
+
+        let bitcoind = Bitcoind::new(
+            "bitcoin-regtest",
+            "ruimarinho/bitcoin-core",
+            config.bitcoin.clone(),
+        );
+
+        bitcoind.start().unwrap();
+
+        let wallet = Wallet::new(config, true).unwrap();
+        wallet.mine(101).unwrap();
+
+        let wallet_name = "wallet_1";
+        let funding_id = "fund_1";
+
+        let secp = Secp256k1::new();
+        let mut rng = secp256k1::rand::thread_rng();
+        let mut private_keys = Vec::new();
+        let mut public_keys: Vec<MusigPublicKey> = Vec::new();
+
+        // Generate 5 random private keys and their corresponding public keys
+        for _ in 0..5 {
+            let privkey = SecretKey::new(&mut rng);
+            let musig_secret = MusigSecretKey::from_byte_array(&privkey.secret_bytes()).unwrap();
+            let musig_scalar =
+                musig2::secp::Scalar::from_slice(&musig_secret.secret_bytes()).unwrap();
+            private_keys.push(musig_scalar);
+            let pubkey = privkey.public_key(&secp);
+            let pubkey = MusigPublicKey::from_str(&pubkey.to_string()).unwrap();
+            public_keys.push(pubkey);
+        }
+
+        // Create Aggregated public key and secret key
+        let ctx = KeyAggContext::new(public_keys).unwrap();
+        let aggregated_pubkey: MusigPublicKey = ctx.aggregated_pubkey();
+        let aggregated_pubkey = PublicKey::from_str(&aggregated_pubkey.to_string()).unwrap();
+        let aggregated_seckey: MusigSecretKey = ctx.aggregated_seckey(private_keys).unwrap();
+        let aggregated_seckey =
+            SecretKey::from_str(&aggregated_seckey.display_secret().to_string()).unwrap();
+        let aggregated_private_key = PrivateKey::new(aggregated_seckey, Network::Regtest);
+        let public_key = aggregated_private_key.public_key(&secp);
+
+        // Check if the aggregated public key matches the public key derived from the aggregated secret key
+        assert_eq!(public_key, aggregated_pubkey, "Aggregated public key does not match the derived public key from aggregated secret key");
+
+        // Create a wallet with the aggregated secret key and fund it
+        wallet
+            .create_wallet_from_secret(wallet_name, &aggregated_seckey.display_secret().to_string())
+            .unwrap();
+        wallet
+            .regtest_fund(wallet_name, funding_id, 100_000)
+            .unwrap();
+
+        let pk = PublicKey::from_str(
+            "038f47dcd43ba6d97fc9ed2e3bba09b175a45fac55f0683e8cf771e8ced4572354",
+        )
+        .unwrap();
+
+        let result = wallet.fund_address(
+            wallet_name,
+            funding_id,
+            pk,
+            &vec![9_000],
+            1000,
+            true,
+            true,
+            None,
+        );
+        assert!(result.is_ok(), "Failed to fund address: {:?}", result.err());
     }
 }

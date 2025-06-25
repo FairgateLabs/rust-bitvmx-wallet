@@ -6,7 +6,7 @@ pub enum WalletError {
     #[error("Error while trying to build configuration")]
     ConfigError(#[from] bitvmx_settings::errors::ConfigError),
 
-    #[error("Error with the Bitcoin client")]
+    #[error("Error with the Bitcoin client: {0}")]
     BitcoinClientError(#[from] BitcoinClientError),
 
     #[error("Error while trying to build protocol")]

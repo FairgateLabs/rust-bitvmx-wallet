@@ -66,7 +66,7 @@ impl Wallet {
             if let Some(bitcoin_client) = &bitcoin_client {
                 Some(
                     bitcoin_client
-                        .init_wallet(bitcoin::Network::Regtest, "test_wallet")
+                        .init_wallet(bitcoin::Network::Regtest, &config.bitcoin.wallet)
                         .unwrap(),
                 )
             } else {

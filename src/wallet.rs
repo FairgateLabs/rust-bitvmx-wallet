@@ -710,4 +710,62 @@ mod tests {
         );
         assert!(result.is_ok(), "Failed to fund address: {:?}", result.err());
     }
+
+    // Keys and funding related management tests
+    #[test]
+    fn test_create_and_export_wallet() {
+        let config = clean_and_load_config("config/regtest.yaml").unwrap();
+        let wallet = Wallet::new(config, false).unwrap();
+
+        let identifier = "test_wallet";
+        let pubkey = wallet.create_wallet(identifier).unwrap();
+        let (exported_pub, exported_priv) = wallet.export_wallet(identifier).unwrap();
+        
+        assert_eq!(pubkey, exported_pub);
+    }
+
+    #[test]
+    fn test_add_and_list_funding() {
+        let config = clean_and_load_config("config/regtest.yaml").unwrap();
+        let wallet = Wallet::new(config, false).unwrap();
+
+        let identifier = "test_wallet";
+        wallet.create_wallet(identifier).unwrap();
+
+        let funding_id = "fund1";
+        let outpoint = OutPoint {
+            txid: Txid::all_zeros(),
+            vout: 0,
+        };
+        let amount = 123_456;
+
+        wallet.add_funding(identifier, funding_id, outpoint, amount).unwrap();
+
+        let funds = wallet.list_funds(identifier).unwrap();
+        assert_eq!(funds.len(), 1);
+        assert_eq!(funds[0].1, outpoint);
+        assert_eq!(funds[0].2, amount);
+    }
+
+    #[test]
+    fn test_remove_funding() {
+        let config = clean_and_load_config("config/regtest.yaml").unwrap();
+        let wallet = Wallet::new(config, false).unwrap();
+
+        let identifier = "test_wallet";
+        wallet.create_wallet(identifier).unwrap();
+
+        let funding_id = "fund1";
+        let outpoint = OutPoint {
+            txid: Txid::all_zeros(),
+            vout: 0,
+        };
+        let amount = 123_456;
+
+        wallet.add_funding(identifier, funding_id, outpoint, amount).unwrap();
+        wallet.remove_funding(identifier, funding_id).unwrap();
+
+        let funds = wallet.list_funds(identifier).unwrap();
+        assert!(funds.is_empty());
+    }
 }

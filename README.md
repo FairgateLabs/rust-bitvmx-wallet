@@ -1,7 +1,7 @@
 # rust-bitvmx-wallet
 
 A simple Bitcoin wallet CLI for the BitVMX project, built in Rust.  
-This tool allows you to manage keys, fund and spend from addresses, and interact with a regtest Bitcoin node.
+This tool allows you to manage keys, fund and spend from addresses, and interact with a Bitcoin node (regtest, testnet, or mainnet).
 
 ---
 
@@ -19,13 +19,9 @@ This tool allows you to manage keys, fund and spend from addresses, and interact
 
 ## How it works
 
-- **rust-bitvmx-wallet** manages "logical wallets" (identifiers and keys) in a local database, but all Bitcoin transactions are performed using a single wallet loaded in your Bitcoin Core node.
-- The Bitcoin Core wallet must be created and loaded in your node before using this CLI.  
-  Example:
-  ```sh
-  docker exec -it bitvmx-node-1 bitcoin-cli -regtest -rpcuser=foo -rpcpassword=rpcpassword createwallet test_wallet
-  ```
-- The CLI stores key material and metadata in local files (see `config/regtest.yaml` for paths).
+- **rust-bitvmx-wallet** manages "logical wallets" (identifiers and keys) in a local database.
+- All Bitcoin transactions (except the initial regtest funding helper) are constructed and signed by this CLI, not by the Bitcoin Core wallet.
+- For **regtest only**: if you use the `regtest-fund` helper, the wallet name in your config must match an existing wallet in your node.
 
 ---
 
@@ -72,7 +68,7 @@ cargo run -- [OPTIONS] <COMMAND>
   Mine blocks (regtest only).
 
 - `regtest-fund <IDENTIFIER> <FUNDING_ID> <AMOUNT>`  
-  Fund an identifier using regtest coins (only works if your node is in regtest mode).
+  Fund an identifier using regtest coins (only works if your node is in regtest mode and the wallet name matches).
 
 - `btc-to-sat <BTC>`  
   Convert BTC to Satoshis.
@@ -85,13 +81,13 @@ cargo run -- [OPTIONS] <COMMAND>
 ## Example workflow
 
 ```sh
-# 1. Ensure your Bitcoin Core node is running and the wallet exists and is loaded:
+# 1. (Regtest only, optional) Ensure your Bitcoin Core node has a wallet matching your config:
 docker exec -it bitvmx-node-1 bitcoin-cli -regtest -rpcuser=foo -rpcpassword=rpcpassword createwallet test_wallet
 
 # 2. Create a logical wallet (generates a new keypair)
 cargo run -- create-wallet alice
 
-# 3. Fund the wallet in regtest mode
+# 3. Fund the wallet in regtest mode (helper)
 cargo run -- regtest-fund alice fund1 100000
 
 # 4. List funds
@@ -147,8 +143,8 @@ storage:
 
 ## Important
 
-- The Bitcoin Core wallet specified in your config **must exist and be loaded** in your node.
-- All Bitcoin transactions are performed using this wallet; the CLI manages logical wallets/keys on top of it.
+- For regtest, if you use the `regtest-fund` helper, the wallet name in your config must match an existing wallet in your node.
+- All other transactions are constructed and signed by this CLI, not by the Bitcoin Core wallet.
 - Local wallet/key data is stored in the paths specified in your config file.
 
 ---

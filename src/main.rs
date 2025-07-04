@@ -173,5 +173,15 @@ fn main() {
                 println!("- Pubkey: {pubkey}");
             }
         }
+        Commands::ImportPartialPrivateKeys {
+            identifier,
+            private_keys,
+            network,
+        } => {
+            match wallet.import_partial_private_keys(identifier, private_keys.clone(), *network) {
+                Ok(_) => println!("Imported partial private keys for {identifier}"),
+                Err(e) => eprintln!("Error: {e}"),
+            }
+        }
     }
 }

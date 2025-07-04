@@ -72,4 +72,11 @@ pub enum Commands {
     BtcToSat { btc: f64 },
     /// List wallets
     ListWallets,
+    /// Import partial private keys to create a wallet from the aggregated private key
+    ImportPartialPrivateKeys {
+        identifier: String,
+        #[arg(value_delimiter = ',')]
+        private_keys: Vec<String>,
+        network: bitcoin::Network,
+    },
 }

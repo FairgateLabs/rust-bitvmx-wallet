@@ -13,7 +13,7 @@ use protocol_builder::{
 };
 use std::rc::Rc;
 use storage_backend::storage::{KeyValueStore, Storage};
-use tracing::info;
+use tracing::{error, info};
 
 pub struct Wallet {
     store: Rc<Storage>,
@@ -162,12 +162,17 @@ impl Wallet {
         partial_keys: Vec<String>,
         network: bitcoin::Network,
     ) -> Result<(), WalletError> {
+        if partial_keys.is_empty() {
+            error!("No partial private keys provided");
+            return Err(WalletError::InvalidPartialPrivateKeys);
+        }
 
         let aggregated_public_key = if partial_keys.iter().all(|key| key.len() == 64) {
             self.key_manager.import_partial_secret_keys(partial_keys, network)?
-        } else if partial_keys.iter().all(|key| key.len() == 52) {
-           self.key_manager.import_partial_private_keys(partial_keys, network)?
+        } else if  partial_keys.iter().all(|key| key.len() == 52) {
+            self.key_manager.import_partial_private_keys(partial_keys, network)?
         } else {
+            error!("Invalid partial private keys provided");
             return Err(WalletError::InvalidPartialPrivateKeys);
         };
 

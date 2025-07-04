@@ -156,6 +156,32 @@ impl Wallet {
         Ok(())
     }
 
+    pub fn import_partial_private_keys(
+        &self,
+        identifier: &str,
+        partial_keys: Vec<String>,
+        network: bitcoin::Network,
+    ) -> Result<(), WalletError> {
+
+        let aggregated_public_key = if partial_keys.iter().all(|key| key.len() == 64) {
+            self.key_manager.import_partial_secret_keys(partial_keys, network)?
+        } else if partial_keys.iter().all(|key| key.len() == 52) {
+           self.key_manager.import_partial_private_keys(partial_keys, network)?
+        } else {
+            return Err(WalletError::InvalidPartialPrivateKeys);
+        };
+
+        let key = StoreKey::Wallet(identifier.to_string()).get_key();
+
+        if self.store.has_key(&key)? {
+            return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
+        }
+
+        self.store.set(key, aggregated_public_key, None)?;
+
+        Ok(())
+    }
+
     pub fn remove_funding(&self, identifier: &str, funding_id: &str) -> Result<(), WalletError> {
         let key = StoreKey::Funding(identifier.to_string(), funding_id.to_string()).get_key();
 
@@ -410,15 +436,11 @@ mod tests {
     use anyhow::{Ok, Result};
     use bitcoin::{
         hashes::Hash,
-        key::{rand, Secp256k1},
+        key::rand,
         secp256k1::{self, SecretKey},
         Network,
     };
     use bitcoind::bitcoind::Bitcoind;
-    use musig2::{
-        secp256k1::{PublicKey as MusigPublicKey, SecretKey as MusigSecretKey},
-        KeyAggContext,
-    };
     use std::{str::FromStr, sync::Once};
     use tracing::info;
     use tracing_subscriber::EnvFilter;
@@ -649,46 +671,24 @@ mod tests {
 
         bitcoind.start().unwrap();
 
+        let network = config.key_manager.network.parse().unwrap();
+
         let wallet = Wallet::new(config, true).unwrap();
         wallet.mine(101).unwrap();
 
         let wallet_name = "wallet_1";
         let funding_id = "fund_1";
 
-        let secp = Secp256k1::new();
         let mut rng = secp256k1::rand::thread_rng();
         let mut private_keys = Vec::new();
-        let mut public_keys: Vec<MusigPublicKey> = Vec::new();
 
         // Generate 5 random private keys and their corresponding public keys
         for _ in 0..5 {
             let privkey = SecretKey::new(&mut rng);
-            let musig_secret = MusigSecretKey::from_byte_array(&privkey.secret_bytes()).unwrap();
-            let musig_scalar =
-                musig2::secp::Scalar::from_slice(&musig_secret.secret_bytes()).unwrap();
-            private_keys.push(musig_scalar);
-            let pubkey = privkey.public_key(&secp);
-            let pubkey = MusigPublicKey::from_str(&pubkey.to_string()).unwrap();
-            public_keys.push(pubkey);
+            private_keys.push(privkey.display_secret().to_string());
         }
 
-        // Create Aggregated public key and secret key
-        let ctx = KeyAggContext::new(public_keys).unwrap();
-        let aggregated_pubkey: MusigPublicKey = ctx.aggregated_pubkey();
-        let aggregated_pubkey = PublicKey::from_str(&aggregated_pubkey.to_string()).unwrap();
-        let aggregated_seckey: MusigSecretKey = ctx.aggregated_seckey(private_keys).unwrap();
-        let aggregated_seckey =
-            SecretKey::from_str(&aggregated_seckey.display_secret().to_string()).unwrap();
-        let aggregated_private_key = PrivateKey::new(aggregated_seckey, Network::Regtest);
-        let public_key = aggregated_private_key.public_key(&secp);
-
-        // Check if the aggregated public key matches the public key derived from the aggregated secret key
-        assert_eq!(public_key, aggregated_pubkey, "Aggregated public key does not match the derived public key from aggregated secret key");
-
-        // Create a wallet with the aggregated secret key and fund it
-        wallet
-            .create_wallet_from_secret(wallet_name, &aggregated_seckey.display_secret().to_string())
-            .unwrap();
+        wallet.import_partial_private_keys(wallet_name, private_keys, network).unwrap();
         wallet
             .regtest_fund(wallet_name, funding_id, 100_000)
             .unwrap();

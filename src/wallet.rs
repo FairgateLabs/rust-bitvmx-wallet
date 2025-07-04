@@ -677,26 +677,34 @@ mod tests {
         wallet.mine(101).unwrap();
 
         let wallet_name = "wallet_1";
+        let wallet_name2 = "wallet_2";
         let funding_id = "fund_1";
+        let funding_id2 = "fund_2";
 
         let mut rng = secp256k1::rand::thread_rng();
+        let mut secret_keys = Vec::new();
         let mut private_keys = Vec::new();
+         let pk = PublicKey::from_str(
+            "038f47dcd43ba6d97fc9ed2e3bba09b175a45fac55f0683e8cf771e8ced4572354",
+        )
+        .unwrap();
 
         // Generate 5 random private keys and their corresponding public keys
         for _ in 0..5 {
             let privkey = SecretKey::new(&mut rng);
-            private_keys.push(privkey.display_secret().to_string());
+            secret_keys.push(privkey.display_secret().to_string());
         }
 
-        wallet.import_partial_private_keys(wallet_name, private_keys, network).unwrap();
+       for _ in 0..5 {
+            let privkey = SecretKey::new(&mut rng);
+            let private_key = PrivateKey::new(privkey, network);
+            private_keys.push(private_key.to_string());
+        }
+
+        wallet.import_partial_private_keys(wallet_name, secret_keys, network).unwrap();
         wallet
             .regtest_fund(wallet_name, funding_id, 100_000)
             .unwrap();
-
-        let pk = PublicKey::from_str(
-            "038f47dcd43ba6d97fc9ed2e3bba09b175a45fac55f0683e8cf771e8ced4572354",
-        )
-        .unwrap();
 
         let result = wallet.fund_address(
             wallet_name,
@@ -708,6 +716,23 @@ mod tests {
             true,
             None,
         );
-        assert!(result.is_ok(), "Failed to fund address: {:?}", result.err());
+        assert!(result.is_ok(), "Failed to fund address with secret keys: {:?}", result.err());
+
+        wallet.import_partial_private_keys(wallet_name2, private_keys, network).unwrap();
+        wallet
+            .regtest_fund(wallet_name2, funding_id2, 100_000)
+            .unwrap();
+
+        let result = wallet.fund_address(
+            wallet_name2,
+            funding_id2,
+            pk,
+            &vec![9_000],
+            1000,
+            true,
+            true,
+            None,
+        );
+        assert!(result.is_ok(), "Failed to fund address with private keys: {:?}", result.err());
     }
 }

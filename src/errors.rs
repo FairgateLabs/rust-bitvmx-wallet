@@ -38,4 +38,7 @@ pub enum WalletError {
 
     #[error("Invalid spending scripts")]
     InvalidSpendingScripts,
+
+    #[error("Invalid partial private keys")]
+    InvalidPartialPrivateKeys,
 }

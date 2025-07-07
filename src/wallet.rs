@@ -86,6 +86,10 @@ impl Wallet {
     }
 
     pub fn create_wallet(&self, identifier: &str) -> Result<PublicKey, WalletError> {
+        if identifier.trim().is_empty() {
+            return Err(WalletError::KeyNotFound("Invalid identifier".to_string()));
+        }
+
         let key = StoreKey::Wallet(identifier.to_string()).get_key();
 
         if self.store.has_key(&key)? {
@@ -145,6 +149,11 @@ impl Wallet {
         outpoint: OutPoint,
         amount: u64,
     ) -> Result<(), WalletError> {
+        if funding_id.trim().is_empty() {
+            return Err(WalletError::FundingIdError(
+                "funding_id cannot be empty or white space".to_string(),
+            ));
+        }
         let key = StoreKey::Funding(identifier.to_string(), funding_id.to_string()).get_key();
 
         if self.store.has_key(&key)? {
@@ -474,6 +483,15 @@ mod tests {
         let _ = std::fs::remove_dir_all(path);
     }
 
+    fn setup_wallet() -> Wallet {
+    let config = clean_and_load_config("config/regtest.yaml").unwrap();
+    Wallet::new(config, false).unwrap()
+    }
+
+    fn create_test_wallet(wallet: &Wallet, identifier: &str) {
+        wallet.create_wallet(identifier).unwrap();
+    }
+
     #[test]
     #[ignore]
     fn test_fund_address() -> Result<(), anyhow::Error> {
@@ -709,5 +727,262 @@ mod tests {
             None,
         );
         assert!(result.is_ok(), "Failed to fund address: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_create_and_export_wallet() {
+        let config = clean_and_load_config("config/regtest.yaml").unwrap();
+        let wallet = Wallet::new(config, false).unwrap();
+
+        let identifier = "test_wallet";
+        let pubkey = wallet.create_wallet(identifier).unwrap();
+        let (exported_pub, exported_priv) = wallet.export_wallet(identifier).unwrap();
+        
+        assert_eq!(pubkey, exported_pub);
+    }
+
+    
+    #[test]
+    fn test_create_wallet_empty_identifier() {
+        let wallet = setup_wallet();
+        let identifier = "";
+        let result = wallet.create_wallet(identifier);
+        assert!(result.is_err(), "Should not allow wallet names with only whitespace");
+    }
+
+    #[test]
+    fn test_create_wallet_with_whitespace_name() {
+        let wallet = setup_wallet();
+        let identifier = "   ";
+        let result = wallet.create_wallet(identifier);
+        assert!(result.is_err(), "Should not allow wallet names with only whitespace");
+    }
+
+    #[test]
+    fn test_create_wallet_duplicate_identifier_should_fail() {
+        let wallet = setup_wallet();
+        let identifier = "dup_wallet";
+        create_test_wallet(&wallet, identifier);
+        let result = wallet.create_wallet(identifier);
+        assert!(result.is_err(), "Should not allow duplicate wallet identifiers");
+    }
+
+    #[test]
+    fn test_add_funding_with_empty_id_should_fail() {
+        let wallet = setup_wallet();
+        let identifier = "wallet_empty_fundid";
+        create_test_wallet(&wallet, identifier);
+
+        let funding_id = "";
+        let outpoint = OutPoint {
+            txid: Txid::all_zeros(),
+            vout: 0,
+        };
+        let amount = 100_000;
+
+        let result = wallet.add_funding(identifier, funding_id, outpoint, amount);
+        assert!(result.is_err(), "Should not allow funding with empty funding_id");
+    }
+
+    #[test]
+    fn test_add_funding_with_blank_id_should_fail() {
+        let wallet = setup_wallet();
+        let identifier = "wallet_blank_fundid";
+        create_test_wallet(&wallet, identifier);
+
+        let funding_id = " ";
+        let outpoint = OutPoint {
+            txid: Txid::all_zeros(),
+            vout: 0,
+        };
+        let amount = 100_000;
+
+        let result = wallet.add_funding(identifier, funding_id, outpoint, amount);
+        assert!(result.is_err(), "Should not allow funding with empty or blank funding_id");
+    }
+
+    #[test]
+    fn test_add_and_list_funding() {
+        let wallet = setup_wallet();
+        let identifier = "test_wallet";
+        create_test_wallet(&wallet, identifier);
+
+        let funding_id = "fund1";
+        let outpoint = OutPoint {
+            txid: Txid::all_zeros(),
+            vout: 0,
+        };
+        let amount = 123_456;
+
+        wallet.add_funding(identifier, funding_id, outpoint, amount).unwrap();
+
+        let funds = wallet.list_funds(identifier).unwrap();
+        assert_eq!(funds.len(), 1);
+        assert_eq!(funds[0].1, outpoint);
+        assert_eq!(funds[0].2, amount);
+    }
+
+    #[test]
+    fn test_remove_funding() {
+        let wallet = setup_wallet();
+        let identifier = "test_wallet";
+        create_test_wallet(&wallet, identifier);
+
+        let funding_id = "fund1";
+        let outpoint = OutPoint {
+            txid: Txid::all_zeros(),
+            vout: 0,
+        };
+        let amount = 123_456;
+
+        wallet.add_funding(identifier, funding_id, outpoint, amount).unwrap();
+        wallet.remove_funding(identifier, funding_id).unwrap();
+
+        let funds = wallet.list_funds(identifier).unwrap();
+        assert!(funds.is_empty());
+    }
+
+    #[test]
+    fn test_persistence_of_wallet_and_funds() {
+        let base_path = "/tmp/test_wallet_persistence";
+        let storage_path = format!("{}/storage.db", base_path);
+        let key_storage_path = format!("{}/keys.db", base_path);
+
+        let _ = std::fs::remove_dir_all(base_path);
+
+        let mut config = clean_and_load_config("config/regtest.yaml").unwrap();
+        config.storage.path = storage_path.clone();
+        config.key_storage.path = key_storage_path.clone();
+
+        let identifier = "persist_wallet";
+        let funding_id = "persist_fund";
+        let outpoint = OutPoint {
+            txid: Txid::all_zeros(),
+            vout: 0,
+        };
+        let amount = 42_000;
+
+        {
+            let wallet = Wallet::new(config.clone(), false).unwrap();
+            create_test_wallet(&wallet, identifier);
+            wallet.add_funding(identifier, funding_id, outpoint, amount).unwrap();
+        }
+
+        let wallet = Wallet::new(config, false).unwrap();
+
+        let (pubkey, _) = wallet.export_wallet(identifier).unwrap();
+        assert!(!pubkey.to_string().is_empty());
+
+        let funds = wallet.list_funds(identifier).unwrap();
+        assert_eq!(funds.len(), 1);
+        assert_eq!(funds[0].1, outpoint);
+        assert_eq!(funds[0].2, amount);
+
+        let _ = std::fs::remove_dir_all(base_path);
+    }
+
+    #[test]
+    fn test_add_duplicate_funding_should_fail() {
+        let wallet = setup_wallet();
+        let identifier = "wallet_fund";
+        create_test_wallet(&wallet, identifier);
+
+        let funding_id = "fund1";
+        let outpoint = OutPoint {
+            txid: Txid::all_zeros(),
+            vout: 0,
+        };
+        let amount = 100_000;
+
+        wallet.add_funding(identifier, funding_id, outpoint, amount).unwrap();
+        let result = wallet.add_funding(identifier, funding_id, outpoint, amount);
+        assert!(result.is_err(), "Should not allow duplicate funding_id for the same wallet");
+    }
+
+    #[test]
+    fn test_remove_nonexistent_funding_should_fail() {
+        let wallet = setup_wallet();
+        let identifier = "wallet_no_fund";
+        create_test_wallet(&wallet, identifier);
+
+        let result = wallet.remove_funding(identifier, "nonexistent_fund");
+        assert!(result.is_err(), "Should not allow removing non-existent funding");
+    }
+
+    #[test]
+    fn test_export_nonexistent_wallet_should_fail() {
+        let wallet = setup_wallet();
+        let result = wallet.export_wallet("no_such_wallet");
+        assert!(result.is_err(), "Should not export a wallet that does not exist");
+    }
+
+    #[test]
+    fn test_fund_address_with_nonexistent_funding_should_fail() {
+        let wallet = setup_wallet();
+        let identifier = "wallet_no_fund";
+        create_test_wallet(&wallet, identifier);
+
+        let pk = PublicKey::from_str(
+            "038f47dcd43ba6d97fc9ed2e3bba09b175a45fac55f0683e8cf771e8ced4572354",
+        ).unwrap();
+
+        let result = wallet.fund_address(
+            identifier,
+            "nonexistent_fund",
+            pk,
+            &vec![10_000],
+            1000,
+            false,
+            false,
+            None,
+        );
+        assert!(result.is_err(), "Should not fund address with non-existent funding");
+    }
+
+    #[test]
+    fn test_get_wallets_lists_all_wallets() {
+        let wallet = setup_wallet();
+
+        let names = vec!["alice", "bob", "carol"];
+        for name in &names {
+            create_test_wallet(&wallet, name);
+        }
+
+        let wallets = wallet.get_wallets().unwrap();
+        let wallet_names: Vec<String> = wallets.into_iter().map(|(name, _)| name).collect();
+
+        for name in &names {
+            assert!(wallet_names.contains(&name.to_string()), "Wallet '{}' not found in get_wallets", name);
+        }
+    }
+
+    #[test]
+    fn test_list_funds_returns_correct_funds() {
+        let wallet = setup_wallet();
+        let identifier = "alice";
+        create_test_wallet(&wallet, identifier);
+
+        let funding_id1 = "fund1";
+        let outpoint1 = OutPoint {
+            txid: Txid::all_zeros(),
+            vout: 0,
+        };
+        let amount1 = 50_000;
+
+        let funding_id2 = "fund2";
+        let outpoint2 = OutPoint {
+            txid: Txid::from_slice(&[1u8; 32]).unwrap(),
+            vout: 1,
+        };
+        let amount2 = 75_000;
+
+        wallet.add_funding(identifier, funding_id1, outpoint1, amount1).unwrap();
+        wallet.add_funding(identifier, funding_id2, outpoint2, amount2).unwrap();
+
+        let funds = wallet.list_funds(identifier).unwrap();
+
+        assert!(funds.iter().any(|(fid, op, amt)| fid == funding_id1 && *op == outpoint1 && *amt == amount1));
+        assert!(funds.iter().any(|(fid, op, amt)| fid == funding_id2 && *op == outpoint2 && *amt == amount2));
+        assert_eq!(funds.len(), 2);
     }
 }

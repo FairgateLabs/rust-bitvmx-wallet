@@ -3,7 +3,7 @@ use key_manager::config::KeyManagerConfig;
 use serde::{self, Deserialize};
 use storage_backend::storage_config::StorageConfig;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct WalletConfig {
     pub bitcoin: RpcConfig,
     pub key_manager: KeyManagerConfig,

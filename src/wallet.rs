@@ -724,6 +724,21 @@ mod tests {
     }
 
     #[test]
+    fn test_create_wallet_empty_identifier() {
+        let config = clean_and_load_config("config/regtest.yaml").unwrap();
+        let wallet = Wallet::new(config, false).unwrap();
+
+        let identifier = "";
+        let pubkey = wallet.create_wallet(identifier).unwrap();
+        let (exported_pub, _) = wallet.export_wallet(identifier).unwrap();
+        let wallets = wallet.get_wallets().unwrap();
+        for (name, pubkey) in wallets {
+            println!("Wallet name: '{}', pubkey: {}", name, pubkey);
+        }
+    }
+
+
+    #[test]
     fn test_add_and_list_funding() {
         let config = clean_and_load_config("config/regtest.yaml").unwrap();
         let wallet = Wallet::new(config, false).unwrap();
@@ -807,5 +822,71 @@ mod tests {
         assert_eq!(funds[0].2, amount);
 
         let _ = std::fs::remove_dir_all(base_path);
+    }
+
+    #[test]
+    fn test_add_duplicate_funding_should_fail() {
+        let config = clean_and_load_config("config/regtest.yaml").unwrap();
+        let wallet = Wallet::new(config, false).unwrap();
+
+        let identifier = "wallet_fund";
+        wallet.create_wallet(identifier).unwrap();
+
+        let funding_id = "fund1";
+        let outpoint = OutPoint {
+            txid: Txid::all_zeros(),
+            vout: 0,
+        };
+        let amount = 100_000;
+
+        wallet.add_funding(identifier, funding_id, outpoint, amount).unwrap();
+        let result = wallet.add_funding(identifier, funding_id, outpoint, amount);
+        assert!(result.is_err(), "Should not allow duplicate funding_id for the same wallet");
+    }
+
+    #[test]
+    fn test_remove_nonexistent_funding_should_fail() {
+        let config = clean_and_load_config("config/regtest.yaml").unwrap();
+        let wallet = Wallet::new(config, false).unwrap();
+
+        let identifier = "wallet_no_fund";
+        wallet.create_wallet(identifier).unwrap();
+
+        let result = wallet.remove_funding(identifier, "nonexistent_fund");
+        assert!(result.is_err(), "Should not allow removing non-existent funding");
+    }
+
+    #[test]
+    fn test_export_nonexistent_wallet_should_fail() {
+        let config = clean_and_load_config("config/regtest.yaml").unwrap();
+        let wallet = Wallet::new(config, false).unwrap();
+
+        let result = wallet.export_wallet("no_such_wallet");
+        assert!(result.is_err(), "Should not export a wallet that does not exist");
+    }
+
+    #[test]
+    fn test_fund_address_with_nonexistent_funding_should_fail() {
+        let config = clean_and_load_config("config/regtest.yaml").unwrap();
+        let wallet = Wallet::new(config, false).unwrap();
+
+        let identifier = "wallet_no_fund";
+        wallet.create_wallet(identifier).unwrap();
+
+        let pk = PublicKey::from_str(
+            "038f47dcd43ba6d97fc9ed2e3bba09b175a45fac55f0683e8cf771e8ced4572354",
+        ).unwrap();
+
+        let result = wallet.fund_address(
+            identifier,
+            "nonexistent_fund",
+            pk,
+            &vec![10_000],
+            1000,
+            false,
+            false,
+            None,
+        );
+        assert!(result.is_err(), "Should not fund address with non-existent funding");
     }
 }

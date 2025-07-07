@@ -711,7 +711,6 @@ mod tests {
         assert!(result.is_ok(), "Failed to fund address: {:?}", result.err());
     }
 
-    // Keys and funding related management tests
     #[test]
     fn test_create_and_export_wallet() {
         let config = clean_and_load_config("config/regtest.yaml").unwrap();
@@ -767,5 +766,46 @@ mod tests {
 
         let funds = wallet.list_funds(identifier).unwrap();
         assert!(funds.is_empty());
+    }
+
+    #[test]
+    fn test_persistence_of_wallet_and_funds() {
+        let base_path = "/tmp/test_wallet_persistence";
+        let storage_path = format!("{}/storage.db", base_path);
+        let key_storage_path = format!("{}/keys.db", base_path);
+
+        let _ = std::fs::remove_dir_all(base_path);
+
+        let mut config = clean_and_load_config("config/regtest.yaml").unwrap();
+        config.storage.path = storage_path.clone();
+        config.key_storage.path = key_storage_path.clone();
+
+        let identifier = "persist_wallet";
+        let funding_id = "persist_fund";
+        let outpoint = OutPoint {
+            txid: Txid::all_zeros(),
+            vout: 0,
+        };
+        let amount = 42_000;
+        
+        // We create the wallet and then destroy the variable to ensure it is saved
+        // in the storage before we try to read it again.
+        {
+            let wallet = Wallet::new(config.clone(), false).unwrap();
+            wallet.create_wallet(identifier).unwrap();
+            wallet.add_funding(identifier, funding_id, outpoint, amount).unwrap();
+        } 
+
+        let wallet = Wallet::new(config, false).unwrap();
+
+        let (pubkey, _) = wallet.export_wallet(identifier).unwrap();
+        assert!(!pubkey.to_string().is_empty());
+
+        let funds = wallet.list_funds(identifier).unwrap();
+        assert_eq!(funds.len(), 1);
+        assert_eq!(funds[0].1, outpoint);
+        assert_eq!(funds[0].2, amount);
+
+        let _ = std::fs::remove_dir_all(base_path);
     }
 }

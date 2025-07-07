@@ -21,6 +21,9 @@ pub enum WalletError {
     #[error("Funding not found {0} {1}")]
     FundingNotFound(String, String),
 
+    #[error("Funding id not allowed. {0}")]
+    FundingIdError(String),
+
     #[error("Key identifier already exists {0}")]
     KeyAlreadyExists(String),
 

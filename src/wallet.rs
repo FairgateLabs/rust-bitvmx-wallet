@@ -64,11 +64,7 @@ impl Wallet {
 
         let regtest_address = if network::Network::Regtest == config.bitcoin.network {
             if let Some(bitcoin_client) = &bitcoin_client {
-                Some(
-                    bitcoin_client
-                        .init_wallet(bitcoin::Network::Regtest, &config.bitcoin.wallet)
-                        .unwrap(),
-                )
+                Some(bitcoin_client.init_wallet(&config.bitcoin.wallet).unwrap())
             } else {
                 None
             }
@@ -177,9 +173,11 @@ impl Wallet {
         }
 
         let aggregated_public_key = if partial_keys.iter().all(|key| key.len() == 64) {
-            self.key_manager.import_partial_secret_keys(partial_keys, network)?
-        } else if  partial_keys.iter().all(|key| key.len() == 52) {
-            self.key_manager.import_partial_private_keys(partial_keys, network)?
+            self.key_manager
+                .import_partial_secret_keys(partial_keys, network)?
+        } else if partial_keys.iter().all(|key| key.len() == 52) {
+            self.key_manager
+                .import_partial_private_keys(partial_keys, network)?
         } else {
             error!("Invalid partial private keys provided");
             return Err(WalletError::InvalidPartialPrivateKeys);
@@ -511,8 +509,8 @@ mod tests {
     }
 
     fn setup_wallet() -> Wallet {
-    let config = clean_and_load_config("config/regtest.yaml").unwrap();
-    Wallet::new(config, false).unwrap()
+        let config = clean_and_load_config("config/regtest.yaml").unwrap();
+        Wallet::new(config, false).unwrap()
     }
 
     fn create_test_wallet(wallet: &Wallet, identifier: &str) {
@@ -707,7 +705,7 @@ mod tests {
         let mut rng = secp256k1::rand::thread_rng();
         let mut secret_keys = Vec::new();
         let mut private_keys = Vec::new();
-         let pk = PublicKey::from_str(
+        let pk = PublicKey::from_str(
             "038f47dcd43ba6d97fc9ed2e3bba09b175a45fac55f0683e8cf771e8ced4572354",
         )
         .unwrap();
@@ -718,13 +716,15 @@ mod tests {
             secret_keys.push(privkey.display_secret().to_string());
         }
 
-       for _ in 0..5 {
+        for _ in 0..5 {
             let privkey = SecretKey::new(&mut rng);
             let private_key = PrivateKey::new(privkey, network);
             private_keys.push(private_key.to_string());
         }
 
-        wallet.import_partial_private_keys(wallet_name, secret_keys, network).unwrap();
+        wallet
+            .import_partial_private_keys(wallet_name, secret_keys, network)
+            .unwrap();
         wallet
             .regtest_fund(wallet_name, funding_id, 100_000)
             .unwrap();
@@ -739,9 +739,15 @@ mod tests {
             true,
             None,
         );
-        assert!(result.is_ok(), "Failed to fund address with secret keys: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to fund address with secret keys: {:?}",
+            result.err()
+        );
 
-        wallet.import_partial_private_keys(wallet_name2, private_keys, network).unwrap();
+        wallet
+            .import_partial_private_keys(wallet_name2, private_keys, network)
+            .unwrap();
         wallet
             .regtest_fund(wallet_name2, funding_id2, 100_000)
             .unwrap();
@@ -756,7 +762,11 @@ mod tests {
             true,
             None,
         );
-        assert!(result.is_ok(), "Failed to fund address with private keys: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to fund address with private keys: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -767,17 +777,19 @@ mod tests {
         let identifier = "test_wallet";
         let pubkey = wallet.create_wallet(identifier).unwrap();
         let (exported_pub, exported_priv) = wallet.export_wallet(identifier).unwrap();
-        
+
         assert_eq!(pubkey, exported_pub);
     }
 
-    
     #[test]
     fn test_create_wallet_empty_identifier() {
         let wallet = setup_wallet();
         let identifier = "";
         let result = wallet.create_wallet(identifier);
-        assert!(result.is_err(), "Should not allow wallet names with only whitespace");
+        assert!(
+            result.is_err(),
+            "Should not allow wallet names with only whitespace"
+        );
     }
 
     #[test]
@@ -785,7 +797,10 @@ mod tests {
         let wallet = setup_wallet();
         let identifier = "   ";
         let result = wallet.create_wallet(identifier);
-        assert!(result.is_err(), "Should not allow wallet names with only whitespace");
+        assert!(
+            result.is_err(),
+            "Should not allow wallet names with only whitespace"
+        );
     }
 
     #[test]
@@ -794,7 +809,10 @@ mod tests {
         let identifier = "dup_wallet";
         create_test_wallet(&wallet, identifier);
         let result = wallet.create_wallet(identifier);
-        assert!(result.is_err(), "Should not allow duplicate wallet identifiers");
+        assert!(
+            result.is_err(),
+            "Should not allow duplicate wallet identifiers"
+        );
     }
 
     #[test]
@@ -811,7 +829,10 @@ mod tests {
         let amount = 100_000;
 
         let result = wallet.add_funding(identifier, funding_id, outpoint, amount);
-        assert!(result.is_err(), "Should not allow funding with empty funding_id");
+        assert!(
+            result.is_err(),
+            "Should not allow funding with empty funding_id"
+        );
     }
 
     #[test]
@@ -828,7 +849,10 @@ mod tests {
         let amount = 100_000;
 
         let result = wallet.add_funding(identifier, funding_id, outpoint, amount);
-        assert!(result.is_err(), "Should not allow funding with empty or blank funding_id");
+        assert!(
+            result.is_err(),
+            "Should not allow funding with empty or blank funding_id"
+        );
     }
 
     #[test]
@@ -844,7 +868,9 @@ mod tests {
         };
         let amount = 123_456;
 
-        wallet.add_funding(identifier, funding_id, outpoint, amount).unwrap();
+        wallet
+            .add_funding(identifier, funding_id, outpoint, amount)
+            .unwrap();
 
         let funds = wallet.list_funds(identifier).unwrap();
         assert_eq!(funds.len(), 1);
@@ -865,7 +891,9 @@ mod tests {
         };
         let amount = 123_456;
 
-        wallet.add_funding(identifier, funding_id, outpoint, amount).unwrap();
+        wallet
+            .add_funding(identifier, funding_id, outpoint, amount)
+            .unwrap();
         wallet.remove_funding(identifier, funding_id).unwrap();
 
         let funds = wallet.list_funds(identifier).unwrap();
@@ -895,7 +923,9 @@ mod tests {
         {
             let wallet = Wallet::new(config.clone(), false).unwrap();
             create_test_wallet(&wallet, identifier);
-            wallet.add_funding(identifier, funding_id, outpoint, amount).unwrap();
+            wallet
+                .add_funding(identifier, funding_id, outpoint, amount)
+                .unwrap();
         }
 
         let wallet = Wallet::new(config, false).unwrap();
@@ -924,9 +954,14 @@ mod tests {
         };
         let amount = 100_000;
 
-        wallet.add_funding(identifier, funding_id, outpoint, amount).unwrap();
+        wallet
+            .add_funding(identifier, funding_id, outpoint, amount)
+            .unwrap();
         let result = wallet.add_funding(identifier, funding_id, outpoint, amount);
-        assert!(result.is_err(), "Should not allow duplicate funding_id for the same wallet");
+        assert!(
+            result.is_err(),
+            "Should not allow duplicate funding_id for the same wallet"
+        );
     }
 
     #[test]
@@ -936,14 +971,20 @@ mod tests {
         create_test_wallet(&wallet, identifier);
 
         let result = wallet.remove_funding(identifier, "nonexistent_fund");
-        assert!(result.is_err(), "Should not allow removing non-existent funding");
+        assert!(
+            result.is_err(),
+            "Should not allow removing non-existent funding"
+        );
     }
 
     #[test]
     fn test_export_nonexistent_wallet_should_fail() {
         let wallet = setup_wallet();
         let result = wallet.export_wallet("no_such_wallet");
-        assert!(result.is_err(), "Should not export a wallet that does not exist");
+        assert!(
+            result.is_err(),
+            "Should not export a wallet that does not exist"
+        );
     }
 
     #[test]
@@ -954,7 +995,8 @@ mod tests {
 
         let pk = PublicKey::from_str(
             "038f47dcd43ba6d97fc9ed2e3bba09b175a45fac55f0683e8cf771e8ced4572354",
-        ).unwrap();
+        )
+        .unwrap();
 
         let result = wallet.fund_address(
             identifier,
@@ -966,7 +1008,10 @@ mod tests {
             false,
             None,
         );
-        assert!(result.is_err(), "Should not fund address with non-existent funding");
+        assert!(
+            result.is_err(),
+            "Should not fund address with non-existent funding"
+        );
     }
 
     #[test]
@@ -982,7 +1027,11 @@ mod tests {
         let wallet_names: Vec<String> = wallets.into_iter().map(|(name, _)| name).collect();
 
         for name in &names {
-            assert!(wallet_names.contains(&name.to_string()), "Wallet '{}' not found in get_wallets", name);
+            assert!(
+                wallet_names.contains(&name.to_string()),
+                "Wallet '{}' not found in get_wallets",
+                name
+            );
         }
     }
 
@@ -1006,13 +1055,21 @@ mod tests {
         };
         let amount2 = 75_000;
 
-        wallet.add_funding(identifier, funding_id1, outpoint1, amount1).unwrap();
-        wallet.add_funding(identifier, funding_id2, outpoint2, amount2).unwrap();
+        wallet
+            .add_funding(identifier, funding_id1, outpoint1, amount1)
+            .unwrap();
+        wallet
+            .add_funding(identifier, funding_id2, outpoint2, amount2)
+            .unwrap();
 
         let funds = wallet.list_funds(identifier).unwrap();
 
-        assert!(funds.iter().any(|(fid, op, amt)| fid == funding_id1 && *op == outpoint1 && *amt == amount1));
-        assert!(funds.iter().any(|(fid, op, amt)| fid == funding_id2 && *op == outpoint2 && *amt == amount2));
+        assert!(funds
+            .iter()
+            .any(|(fid, op, amt)| fid == funding_id1 && *op == outpoint1 && *amt == amount1));
+        assert!(funds
+            .iter()
+            .any(|(fid, op, amt)| fid == funding_id2 && *op == outpoint2 && *amt == amount2));
         assert_eq!(funds.len(), 2);
     }
 }

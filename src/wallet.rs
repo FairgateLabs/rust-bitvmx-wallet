@@ -323,7 +323,7 @@ impl Wallet {
 
         let mut protocol = Protocol::new("transfer_tx");
         protocol.add_external_transaction("origin")?;
-        protocol.add_unkwnoun_outputs("origin", outpoint.vout)?;
+        protocol.add_unknown_outputs("origin", outpoint.vout)?;
         protocol.add_connection(
             "origin_tx_transfer",
             "origin",

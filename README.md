@@ -3,7 +3,10 @@
 A simple Bitcoin wallet CLI for the BitVMX project, built in Rust.  
 This tool allows you to manage keys, fund and spend from addresses, and interact with a Bitcoin node (regtest, testnet, or mainnet).
 
----
+## ⚠️ Disclaimer
+
+This library is currently under development and may not be fully stable.
+It is not production-ready, has not been audited, and future updates may introduce breaking changes without preserving backward compatibility.
 
 ## Features
 
@@ -15,15 +18,11 @@ This tool allows you to manage keys, fund and spend from addresses, and interact
 - Convert BTC to Satoshis
 - Configurable via YAML config file
 
----
-
 ## How it works
 
 - **rust-bitvmx-wallet** manages "logical wallets" (identifiers and keys) in a local database.
 - All Bitcoin transactions (except the initial regtest funding helper) are constructed and signed by this CLI, not by the Bitcoin Core wallet.
 - For **regtest only**: if you use the `regtest-fund` helper, the wallet name in your config must match an existing wallet in your node.
-
----
 
 ## Usage
 
@@ -76,8 +75,6 @@ cargo run -- [OPTIONS] <COMMAND>
 - `list-wallets`  
   List all wallet identifiers and their public keys.
 
----
-
 ## Example workflow
 
 ```sh
@@ -99,8 +96,6 @@ cargo run -- fund-address alice fund1 <pubkey> 50000 1000
 # 6. Mine blocks to confirm
 cargo run -- mine 1
 ```
-
----
 
 ## Configuration
 
@@ -128,8 +123,6 @@ storage:
   path: /tmp/regtest/wallet/storage.db
 ```
 
----
-
 ## Key Management Notes
 
 - **Regtest:**  
@@ -139,15 +132,11 @@ storage:
   Use `import-key` to import an existing secret key (WIF format) that controls funds on a P2WPKH (bech32) address.  
   After importing, use `add-funding` to register the UTXO (by txid:vout and amount) that you control with this key.
 
----
-
 ## Important
 
 - For regtest, if you use the `regtest-fund` helper, the wallet name in your config must match an existing wallet in your node.
 - All other transactions are constructed and signed by this CLI, not by the Bitcoin Core wallet.
 - Local wallet/key data is stored in the paths specified in your config file.
-
----
 
 ## License
 

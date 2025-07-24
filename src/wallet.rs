@@ -96,7 +96,6 @@ impl Wallet {
         let public = self.key_manager.derive_keypair(index)?;
 
         self.store.set(key, public.clone(), None)?;
-
         Ok(public)
     }
 
@@ -386,6 +385,13 @@ impl Wallet {
         Ok(())
     }
 
+    pub fn mine_to_address(&self, num_blocks: u64, address: &Address) -> Result<(), WalletError> {
+        if let Some(bitcoin_client) = &self.bitcoin_client {
+            bitcoin_client.mine_blocks_to_address(num_blocks, address)?;
+        }
+        Ok(())
+    }
+
     pub fn regtest_fund(
         &self,
         identifier: &str,
@@ -453,9 +459,18 @@ mod tests {
         Network,
     };
     use bitcoind::bitcoind::Bitcoind;
-    use std::{str::FromStr, sync::Once};
+    use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+    use std::{str::FromStr, sync::Arc};
     use tracing::info;
     use tracing_subscriber::EnvFilter;
+    // BDK Wallet dependencies
+    use bdk_wallet::{rusqlite::{Connection}, KeychainKind, PersistedWallet, Wallet as BdkWallet, bitcoin::{Block, Transaction}, SignOptions};
+    use ctrlc;
+    use bdk_bitcoind_rpc::{Emitter, bitcoincore_rpc::{Auth, Client},};
+    use std::time::Instant;
+    use std::sync::mpsc::sync_channel;
+    use std::sync::Once;
+    use std::thread::spawn;
 
     static INIT: Once = Once::new();
 
@@ -515,6 +530,245 @@ mod tests {
 
     fn create_test_wallet(wallet: &Wallet, identifier: &str) {
         wallet.create_wallet(identifier).unwrap();
+    }
+
+    #[derive(Debug)]
+    enum Emission {
+        SigTerm,
+        Block(bdk_bitcoind_rpc::BlockEvent<Block>),
+        Mempool(bdk_bitcoind_rpc::MempoolEvent),
+    }
+
+    pub fn get_bdk_wallet(conn: &mut Connection, network: Network, descriptor: &str, change_descriptor: &str) -> Result<PersistedWallet<Connection>, anyhow::Error> {
+
+        // Get or create a wallet with initial data read from rusqlite database.
+        // Load the wallet from the database
+        let wallet_opt = BdkWallet::load()
+            .descriptor(KeychainKind::External, Some(descriptor.to_string()))
+            .descriptor(KeychainKind::Internal, Some(change_descriptor.to_string()))
+            .extract_keys()
+            .check_network(network)
+            //.load_wallet(&mut db)
+            .load_wallet(conn)
+            .expect("bdk_wallet load wallet");
+
+        // If the wallet is not found, create a new one
+        let wallet = match wallet_opt {
+            Some(wallet) => wallet,
+            None => BdkWallet::create(descriptor.to_string(), change_descriptor.to_string())
+                .network(network)
+                .create_wallet( conn)
+                .expect("bdk_wallet create wallet"),
+        };
+
+        Ok(wallet)
+    }
+
+    fn sync_wallet(bdk_wallet: &mut PersistedWallet<Connection>, conn: &mut Connection, bitcoin_config: &RpcConfig) -> Result<(), anyhow::Error> {
+        let start_syncing = Instant::now();
+        // Obtain latest checkpoint (last synced block height and hash)
+        let wallet_tip = bdk_wallet.latest_checkpoint();
+        println!(
+            "Wallet tip: {} at height {}",
+            wallet_tip.hash(),
+            wallet_tip.height()
+        );
+
+        // Create a synchronous channel with two threads one to receive emissions from the emitter and the other to send emissions to the wallet
+        // Buffer Size of 21: This means the channel can hold up to 21 Emission messages in its buffer. If the buffer is full the emitter thread will block when trying to send new emissions
+        let (sender, receiver) = sync_channel::<Emission>(21);
+
+        // Set up a signal handler to send a SigTerm (CTRL+C) emission when the process is terminated
+        let signal_sender = sender.clone();
+        let _ = ctrlc::set_handler(move || {
+            signal_sender
+                .send(Emission::SigTerm)
+                .expect("failed to send sigterm")
+        });
+
+        // Create a Bitcoin RPC client
+        let rpc_client = Arc::new(Client::new(&bitcoin_config.url, Auth::UserPass(bitcoin_config.username.clone(), bitcoin_config.password.clone()))?);
+        
+        // Earliest block height to start sync from
+        let start_height = 0;
+        let emitter_tip = wallet_tip.clone();
+        let expected_mempool_txid = bdk_wallet
+            .transactions()
+            .filter(|tx| tx.chain_position.is_unconfirmed());
+        // Create a new emitter that will emit the blocks and the mempool to the wallet thread
+        let mut emitter = Emitter::new(rpc_client, emitter_tip, start_height, expected_mempool_txid);
+
+        // Start the emitter thread that connects with the Bitcoin node and receives the blocks and the mempool
+        spawn(move || -> Result<(), anyhow::Error> {
+            // Send blocks one by one to the wallet thread, starting from last checkpoint or start_height
+            while let Some(emission) = emitter.next_block()? {
+                sender.send(Emission::Block(emission))?;
+            }
+            // Send the mempool to the wallet thread
+            sender.send(Emission::Mempool(emitter.mempool()?))?;
+            Ok(())
+        });
+
+        // Start the wallet thread that receives the blocks and the mempool from the emitter thread and applies them to the wallet
+        let mut blocks_received = 0_usize;
+        for emission in receiver {
+            match emission {
+                // If the process is terminated(CTRL+C), exit the loop
+                Emission::SigTerm => {
+                    println!("Sigterm received, exiting...");
+                    break;
+                }
+                // If a block is received, apply it to the wallet
+                Emission::Block(block_emission) => {
+                    blocks_received += 1;
+                    let height = block_emission.block_height();
+                    let hash = block_emission.block_hash();
+                    let connected_to = block_emission.connected_to();
+                    let start_apply_block = Instant::now();
+                    // Apply the block to the wallet
+                    bdk_wallet.apply_block_connected_to(&block_emission.block, height, connected_to)?;
+                    // Persist the wallet to the database
+                    bdk_wallet.persist(conn)?;
+                    // Print the time it took to apply the block in seconds (not actually needed just for testing)
+                    let elapsed = start_apply_block.elapsed().as_secs_f32();
+                    println!(
+                        "Applied block {} at height {} in {}s",
+                        hash, height, elapsed
+                    );
+                }
+                Emission::Mempool(mempool_emission) => {
+                    let start_apply_mempool = Instant::now();
+                    // Apply the mempool to the wallet
+                    bdk_wallet.apply_evicted_txs(mempool_emission.evicted_ats());
+                    bdk_wallet.apply_unconfirmed_txs(mempool_emission.new_txs);
+                    // Persist the wallet to the database
+                    bdk_wallet.persist(conn)?;
+                    // Print the time it took to apply the mempool in seconds (not actually needed just for testing)
+                    println!(
+                        "Applied unconfirmed transactions in {}s",
+                        start_apply_mempool.elapsed().as_secs_f32()
+                    );
+                    break;
+                }
+            }
+        }
+        println!(
+            "Synced {} blocks in {}s",
+            blocks_received,
+            start_syncing.elapsed().as_secs_f32(),
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_bdk_wallet() -> Result<(), anyhow::Error> {
+        // Arrenge
+        let config = clean_and_load_config("config/regtest.yaml")?;
+        let bitcoin_config = config.bitcoin.clone();
+
+        let bitcoind = Bitcoind::new(
+            "bitcoin-regtest",
+            "ruimarinho/bitcoin-core",
+            bitcoin_config.clone(),
+        );
+        bitcoind.start()?;
+
+        let wallet = Wallet::new(config, true)?;
+        wallet.mine(101)?;
+
+        let wallet_name = "wallet_1";
+        wallet.create_wallet(wallet_name)?;
+
+        // ------- BDK Wallet -------
+        let db_path = format!("/tmp/bdk_wallet_{wallet_name}.db");
+        let _ = std::fs::remove_file(db_path.clone());
+        let start_load_wallet = Instant::now();
+
+        // Open or create a new sqlite database.
+        let mut conn = Connection::open(db_path).expect("bdk_wallet rust sqlite open connection");
+
+        let network = Network::Regtest;
+        // Descriptor for the wallet indicates native segwit (wpkh) xprivkey for regtest network
+        // Using a fresh regtest private key with regtest derivation path (84'/1'/0'/0/*)
+        // See https://docs.rs/bdk_wallet/1.2.0/bdk_wallet/macro.descriptor.html
+        let descriptor = "wpkh(tprv8ZgxMBicQKsPdcAqYBpzAFwU5yxBUo88ggoBqu1qPcHUfSbKK1sKMLmC7EAk438btHQrSdu3jGGQa6PA71nvH5nkDexhLteJqkM4dQmWF9g/84'/1'/0'/0/*)";
+        let change_descriptor = "wpkh(tprv8ZgxMBicQKsPdcAqYBpzAFwU5yxBUo88ggoBqu1qPcHUfSbKK1sKMLmC7EAk438btHQrSdu3jGGQa6PA71nvH5nkDexhLteJqkM4dQmWF9g/84'/1'/0'/1/*)";
+
+        // Get or Create the BDK wallet
+        let mut bdk_wallet = get_bdk_wallet(&mut conn, network, descriptor, change_descriptor)?;
+        // Get a new address to receive bitcoin.
+        let receive_address = bdk_wallet.reveal_next_address(KeychainKind::External);
+        // Persist staged wallet data changes to sqlite database.
+        bdk_wallet.persist(&mut conn).expect("bdk_wallet persist wallet");
+        // Now it's safe to show the user their next address!
+        println!("Your  new bdk_wallet receive address is: {}", receive_address.address);
+        
+        // Debug: Let's check what addresses the BDK wallet thinks it controls
+        println!("BDK wallet descriptor: {}", descriptor);
+        println!("BDK wallet change descriptor: {}", change_descriptor);
+        
+        // Check the balance of the wallet
+        let balance = bdk_wallet.balance();
+        println!("Wallet balance before syncing: {}", balance.total());
+        
+        // Send 300 BTC to the wallet
+        wallet.mine_to_address(6,&receive_address.address)?;
+        
+        // Mine additional blocks to ensure coinbase maturity (100 confirmations required for coinbase)
+        // The coinbase outputs from the 6 blocks we just mined need 100 confirmations
+        wallet.mine(100)?;
+
+        // Sync the wallet with the Bitcoin node to the latest block
+        sync_wallet(&mut bdk_wallet, &mut conn, &bitcoin_config)?;
+
+        let wallet_tip_end = bdk_wallet.latest_checkpoint();
+        let balance = bdk_wallet.balance();
+        println!(
+            "Wallet fully loaded and synced in {}s",
+            start_load_wallet.elapsed().as_secs_f32(),
+        );
+        println!(
+            "Wallet tip is '{}:{}'",
+            wallet_tip_end.height(),
+            wallet_tip_end.hash()
+        );
+        println!("Wallet balance is {}", balance.total());
+        println!(
+            "Wallet has {} transactions and {:?} utxos",
+            bdk_wallet.transactions().count(),
+            bdk_wallet.list_unspent().count()
+        );
+
+        // Debug: Let's see what UTXOs the BDK wallet actually sees
+        let unspent_utxos = bdk_wallet.list_unspent().collect::<Vec<_>>();
+        println!("Number of unspent UTXOs: {}", unspent_utxos.len());
+        for (i, utxo) in unspent_utxos.iter().enumerate() {
+            println!("UTXO {}: {:?}", i, utxo);
+        }
+
+        // Build a transaction to send 50000 satoshis to a taproot address
+        // See https://docs.rs/bdk_wallet/latest/bdk_wallet/struct.TxBuilder.html
+        let to_address = Address::from_str("tb1pn3q7tv78u5sqyu6ngr7w82krtdfuf4a5tv3udkgy4ners2znxehsse5urx")?.assume_checked();
+        let mut psbt = {
+            let mut builder = bdk_wallet.build_tx();
+            builder
+                .add_recipient(to_address.script_pubkey(), Amount::from_sat(50_000));
+            builder.finish()? //Returns a PartialSignedBitcoinTransaction https://docs.rs/bitcoin/0.32.6/bitcoin/psbt/struct.Psbt.html
+        };
+        // Sign the transaction
+        let finalized = bdk_wallet.sign(&mut psbt, SignOptions::default())?;
+        assert!(finalized, "we should have signed all the inputs");
+
+        // Get the transaction from the psbt
+        let tx = psbt.extract_tx().expect("tx");
+        // Broadcast the transaction
+        wallet.bitcoin_client.unwrap().send_transaction(&tx)?;
+        println!("Transaction broadcasted with hash: {}", tx.compute_txid());
+
+        // If needed it can be speeded up https://docs.rs/bdk_wallet/2.0.0/bdk_wallet/struct.Wallet.html#method.build_fee_bump
+
+        bitcoind.stop()?;
+        Ok(())
     }
 
     #[test]

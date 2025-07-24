@@ -19,3 +19,6 @@ clap = { version = "4.5", features = ["derive"] }
 
 [dev-dependencies]
 bitcoind = { path = "../rust-bitcoind" }
+bdk_wallet = { version = "2.0.0", features = ["rusqlite"] }
+bdk_bitcoind_rpc = "0.20.0"
+ctrlc = "3.3.0"

@@ -41,4 +41,7 @@ pub enum WalletError {
 
     #[error("Invalid partial private keys")]
     InvalidPartialPrivateKeys,
+
+    #[error("This function is only available in regtest mode")]
+    RegtestOnly,
 }

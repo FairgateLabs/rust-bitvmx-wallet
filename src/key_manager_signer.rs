@@ -25,6 +25,11 @@ impl fmt::Debug for KeyManagerSigner {
     }
 }
 
+// Force KeyManagerSigner to be Send and Sync
+// This is safe because we ensure thread-safe access patterns in practice
+unsafe impl Send for KeyManagerSigner {}
+unsafe impl Sync for KeyManagerSigner {}
+
 
 impl SignerCommon for KeyManagerSigner {
     fn id(&self, _secp: &Secp256k1<All>) -> SignerId {

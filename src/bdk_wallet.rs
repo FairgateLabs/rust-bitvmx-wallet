@@ -1,14 +1,14 @@
-use crate::{config::WalletConfig, errors::WalletError};
-use bitcoin::{network, secp256k1::{ecdsa, All, Secp256k1}, sighash, Address, Amount, Block, Network, OutPoint, PrivateKey, Psbt, PublicKey, Transaction, Txid};
+use crate::{config::WalletConfig, errors::WalletError, key_manager_signer::KeyManagerSigner};
+use bitcoin::{key, Address, Amount, Block, Network, Transaction, Txid};
 use key_manager::{create_key_manager_from_config, key_manager::KeyManager, key_store::KeyStore};
 
-use storage_backend::storage::{KeyValueStore, Storage};
+use storage_backend::storage::Storage;
 use tracing::{debug, info};
 
-use bdk_wallet::{rusqlite::Connection, signer::{InputSigner, SignerCommon, SignerError, SignerId, SignerOrdering}, Balance, KeychainKind, PersistedWallet, SignOptions, Wallet as BdkWallet};
+use bdk_wallet::{rusqlite::Connection, signer::SignerOrdering, Balance, KeychainKind, PersistedWallet, SignOptions, Wallet as BdkWallet};
 use ctrlc;
 use bdk_bitcoind_rpc::{Emitter, bitcoincore_rpc::{Auth, Client, RpcApi},};
-use std::{rc::Rc, str::FromStr,sync::{mpsc::sync_channel, Arc}, thread::spawn};
+use std::{str::FromStr,sync::{mpsc::sync_channel, Arc}, thread::spawn};
 
 #[derive(Debug)]
 enum Emission {
@@ -16,74 +16,10 @@ enum Emission {
     Block(bdk_bitcoind_rpc::BlockEvent<Block>),
     Mempool(bdk_bitcoind_rpc::MempoolEvent),
 }
-
-// Wrapper struct to implement InputSigner for KeyManager
-pub struct KeyManagerSigner {
-    key_manager: Arc<KeyManager>,
-    public_key: PublicKey,
-    key_index: u32,
-}
-
-impl KeyManagerSigner {
-    pub fn new(key_manager: Arc<KeyManager>, key_index: u32) -> Result<Self, anyhow::Error> {
-        let master_xpub = key_manager.generate_master_xpub()?;
-        let public_key = key_manager.derive_public_key(master_xpub, key_index)?;
-        Ok(Self { key_manager, public_key, key_index })
-    }
-}
-
-impl SignerCommon for KeyManagerSigner {
-    fn id(&self, _secp: &Secp256k1<All>) -> SignerId {
-        let hash = self.public_key.pubkey_hash();
-        SignerId::PkHash(hash.into())
-    }
-}
-
-impl InputSigner for KeyManagerSigner {
-    fn sign_input(
-        &self,
-        psbt: &mut Psbt,
-        input_index: usize,
-        _sign_options: &SignOptions,
-        _secp: &Secp256k1<All>,
-    ) -> Result<(), SignerError> {
-        if input_index >= psbt.inputs.len() || input_index >= psbt.unsigned_tx.input.len() {
-            return Err(SignerError::InputIndexOutOfRange);
-        }
-
-        if psbt.inputs[input_index].final_script_sig.is_some()
-            || psbt.inputs[input_index].final_script_witness.is_some()
-        {
-            return Ok(());
-        }
-
-        if psbt.inputs[input_index].partial_sigs.contains_key(&self.public_key) {
-            return Ok(());
-        }
-
-        let mut sighasher = sighash::SighashCache::new(psbt.unsigned_tx.clone());
-        let (msg, sighash_type) = psbt
-            .sighash_ecdsa(input_index, &mut sighasher)
-            .map_err(SignerError::Psbt)?;
-
-        let signature =self.key_manager.sign_ecdsa_message(&msg, &self.public_key)?;
-
-        _secp.verify_ecdsa(&msg, &signature, &self.public_key.inner).expect("invalid or corrupted ecdsa signature");
-
-        let final_signature = ecdsa::Signature {
-            signature,
-            sighash_type,
-        };
-        psbt.inputs[input_index].partial_sigs.insert(self.public_key.clone(), final_signature);
-
-        Ok(())
-    }
-}
-
 pub struct Wallet {
     key_manager: Arc<KeyManager>,
     key_index: u32,
-    pub network: bitcoin::Network,
+    pub network: Network,
     pub rpc_client: Arc<Client>,
     conn: Connection,
     pub bdk_wallet: PersistedWallet<Connection>,
@@ -91,7 +27,7 @@ pub struct Wallet {
 
 impl Wallet {
     pub fn new(config: WalletConfig, key_index: u32) -> Result<Wallet, anyhow::Error> {
-        let storage = Rc::new(Storage::new(&config.storage)?);
+        let storage = Arc::new(Storage::new(&config.storage)?);
         let key_store = KeyStore::new(storage.clone());
         let key_manager = Arc::new(create_key_manager_from_config(
             &config.key_manager,
@@ -107,14 +43,7 @@ impl Wallet {
         let db_path = Self::get_db_path(key_index);
         let mut conn = Connection::open(db_path)?;
 
-        let master_xpub = key_manager.generate_master_xpub()?;
-        let public_key = key_manager.derive_public_key(master_xpub, key_index)?;
-
-        // This descriptor for the wallet indicates native segwit (wpkh) public key for regtest network
-        // See https://docs.rs/bdk_wallet/1.2.0/bdk_wallet/macro.descriptor.html
-        // and https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md#examples
-        let descriptor = format!("wpkh({})", public_key).to_string();
-        let bdk_wallet = Self::get_bdk_wallet(&mut conn, config.bitcoin.network, &descriptor, key_manager.clone())?;
+        let bdk_wallet = Self::get_bdk_wallet(&mut conn, config.bitcoin.network, key_index, &key_manager)?;
 
         Ok(Self {
             key_manager,
@@ -249,10 +178,18 @@ impl Wallet {
         format!("/tmp/bdk_wallet_{key_index}.db")
     }
 
-    fn get_bdk_wallet(conn: &mut Connection, network: Network, descriptor: &str, key_manager: Rc<KeyManager>) -> Result<PersistedWallet<Connection>, anyhow::Error> {
+    fn get_bdk_wallet(conn: &mut Connection, network: Network, key_index: u32, key_manager: &Arc<KeyManager>) -> Result<PersistedWallet<Connection>, anyhow::Error> {
         // Get or create a wallet with initial data read from rusqlite database.
         // We use a single descriptor for the wallet, so we don't need to specify the change descriptor.
         // see https://docs.rs/bdk_wallet/latest/bdk_wallet/struct.Wallet.html#method.create_single
+
+
+        let master_xpub = key_manager.generate_master_xpub()?;
+        let public_key = key_manager.derive_public_key(master_xpub, key_index)?;
+        // This descriptor for the wallet indicates native segwit (wpkh) public key for regtest network
+        // See https://docs.rs/bdk_wallet/1.2.0/bdk_wallet/macro.descriptor.html
+        // and https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md#examples
+        let descriptor = format!("wpkh({})", public_key).to_string();
         
         // Load the wallet from the database
         let wallet_opt = BdkWallet::load()
@@ -271,8 +208,7 @@ impl Wallet {
         // We use a custom signer using the key manager see
         // https://docs.rs/bdk_wallet/2.0.0/bdk_wallet/signer/index.html
         // Convert Rc<KeyManager> to Arc<KeyManager> for the signer
-        let key_manager_arc = Arc::new((*key_manager).clone());
-        let signer = KeyManagerSigner::new(key_manager_arc, 0)?;
+        let signer = KeyManagerSigner::new(key_manager.clone(), public_key)?;
         wallet.add_signer(KeychainKind::External, SignerOrdering::default(), Arc::new(signer));
 
         Ok(wallet)

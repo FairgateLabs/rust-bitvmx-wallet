@@ -11,7 +11,6 @@ use protocol_builder::{
         InputArgs, OutputType,
     },
 };
-use std::rc::Rc;
 use storage_backend::storage::{KeyValueStore, Storage};
 use tracing::{debug, error, info};
 
@@ -25,10 +24,10 @@ use std::thread::spawn;
 use std::sync::Arc;
 
 pub struct Wallet {
-    store: Rc<Storage>,
-    key_manager: Rc<KeyManager>,
+    store: Arc<Storage>,
+    key_manager: Arc<KeyManager>,
     network: bitcoin::Network,
-    bitcoin_client: Option<Rc<BitcoinClient>>,
+    bitcoin_client: Option<Arc<BitcoinClient>>,
     regtest_address: Option<Address>,
 }
 
@@ -64,16 +63,16 @@ enum Emission {
 
 impl Wallet {
     pub fn new(config: WalletConfig, with_client: bool) -> Result<Wallet, WalletError> {
-        let storage = Rc::new(Storage::new(&config.storage)?);
+        let storage = Arc::new(Storage::new(&config.storage)?);
         let key_store = KeyStore::new(storage.clone());
-        let key_manager = Rc::new(create_key_manager_from_config(
+        let key_manager = Arc::new(create_key_manager_from_config(
             &config.key_manager,
             key_store,
             storage.clone(),
         )?);
 
         let bitcoin_client = if with_client {
-            Some(Rc::new(BitcoinClient::new_from_config(&config.bitcoin)?))
+            Some(Arc::new(BitcoinClient::new_from_config(&config.bitcoin)?))
         } else {
             None
         };

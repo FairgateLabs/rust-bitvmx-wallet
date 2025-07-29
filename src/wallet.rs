@@ -19,13 +19,13 @@ use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
 use bdk_wallet::{rusqlite::{Connection}, KeychainKind, PersistedWallet, Wallet as BdkWallet, SignOptions};
 use ctrlc;
 use bdk_bitcoind_rpc::{Emitter, bitcoincore_rpc::{Auth, Client},};
-use std::sync::mpsc::sync_channel;
+use std::{rc::Rc, sync::mpsc::sync_channel};
 use std::thread::spawn;
 use std::sync::Arc;
 
 pub struct Wallet {
-    store: Arc<Storage>,
-    key_manager: Arc<KeyManager>,
+    store: Rc<Storage>,
+    key_manager: Rc<KeyManager>,
     network: bitcoin::Network,
     bitcoin_client: Option<Arc<BitcoinClient>>,
     regtest_address: Option<Address>,
@@ -63,9 +63,9 @@ enum Emission {
 
 impl Wallet {
     pub fn new(config: WalletConfig, with_client: bool) -> Result<Wallet, WalletError> {
-        let storage = Arc::new(Storage::new(&config.storage)?);
+        let storage = Rc::new(Storage::new(&config.storage)?);
         let key_store = KeyStore::new(storage.clone());
-        let key_manager = Arc::new(create_key_manager_from_config(
+        let key_manager = Rc::new(create_key_manager_from_config(
             &config.key_manager,
             key_store,
             storage.clone(),

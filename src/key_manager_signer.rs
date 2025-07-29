@@ -1,4 +1,4 @@
-use std::{fmt, sync::Arc};
+use std::{fmt, rc::Rc};
 use bitcoin::{ecdsa, secp256k1::{All, Secp256k1}, sighash, PublicKey, Psbt};
 use bdk_wallet::{signer::{InputSigner, SignerCommon, SignerError, SignerId}, SignOptions};
 use key_manager::key_manager::KeyManager;
@@ -7,12 +7,12 @@ use key_manager::key_manager::KeyManager;
 /// due to rust orphan rule (only traits defined in the current crate can be implemented for types defined outside of the crate)
 /// This is used to sign inputs of a PSBT using the KeyManager
 pub struct KeyManagerSigner {
-    key_manager: Arc<KeyManager>,
+    key_manager: Rc<KeyManager>,
     public_key: PublicKey,
 }
 
 impl KeyManagerSigner {
-    pub fn new(key_manager: Arc<KeyManager>, public_key: PublicKey) -> Result<Self, anyhow::Error> {
+    pub fn new(key_manager: Rc<KeyManager>, public_key: PublicKey) -> Result<Self, anyhow::Error> {
         Ok(Self { key_manager, public_key })
     }
 }

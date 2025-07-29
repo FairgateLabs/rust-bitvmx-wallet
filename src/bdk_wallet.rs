@@ -1,5 +1,5 @@
 use crate::{config::WalletConfig, errors::WalletError, key_manager_signer::KeyManagerSigner};
-use bitcoin::{key, Address, Amount, Block, Network, Transaction, Txid};
+use bitcoin::{Address, Amount, Block, Network, Transaction, Txid};
 use key_manager::{create_key_manager_from_config, key_manager::KeyManager, key_store::KeyStore};
 
 use storage_backend::storage::Storage;
@@ -8,7 +8,7 @@ use tracing::{debug, info};
 use bdk_wallet::{rusqlite::Connection, signer::SignerOrdering, Balance, KeychainKind, PersistedWallet, SignOptions, Wallet as BdkWallet};
 use ctrlc;
 use bdk_bitcoind_rpc::{Emitter, bitcoincore_rpc::{Auth, Client, RpcApi},};
-use std::{str::FromStr,sync::{mpsc::sync_channel, Arc}, thread::spawn};
+use std::{rc::Rc, str::FromStr, sync::{mpsc::sync_channel, Arc}, thread::spawn};
 
 #[derive(Debug)]
 enum Emission {
@@ -17,8 +17,6 @@ enum Emission {
     Mempool(bdk_bitcoind_rpc::MempoolEvent),
 }
 pub struct Wallet {
-    key_manager: Arc<KeyManager>,
-    key_index: u32,
     pub network: Network,
     pub rpc_client: Arc<Client>,
     conn: Connection,
@@ -27,14 +25,13 @@ pub struct Wallet {
 
 impl Wallet {
     pub fn new(config: WalletConfig, key_index: u32) -> Result<Wallet, anyhow::Error> {
-        let storage = Arc::new(Storage::new(&config.storage)?);
+        let storage = Rc::new(Storage::new(&config.storage)?);
         let key_store = KeyStore::new(storage.clone());
-        let key_manager = Arc::new(create_key_manager_from_config(
+        let key_manager = Rc::new(create_key_manager_from_config(
             &config.key_manager,
             key_store,
             storage.clone(),
         )?);
-        
         // Create a Bitcoin RPC client
         let bitcoin_config = config.bitcoin.clone();
         let rpc_client = Arc::new(Client::new(&bitcoin_config.url, Auth::UserPass(config.bitcoin.username.clone(), config.bitcoin.password.clone()))?);
@@ -46,8 +43,6 @@ impl Wallet {
         let bdk_wallet = Self::get_bdk_wallet(&mut conn, config.bitcoin.network, key_index, &key_manager)?;
 
         Ok(Self {
-            key_manager,
-            key_index,
             network: config.bitcoin.network,
             rpc_client,
             conn,
@@ -178,14 +173,14 @@ impl Wallet {
         format!("/tmp/bdk_wallet_{key_index}.db")
     }
 
-    fn get_bdk_wallet(conn: &mut Connection, network: Network, key_index: u32, key_manager: &Arc<KeyManager>) -> Result<PersistedWallet<Connection>, anyhow::Error> {
+    fn get_bdk_wallet(conn: &mut Connection, network: Network, key_index: u32, key_manager: &Rc<KeyManager>) -> Result<PersistedWallet<Connection>, anyhow::Error> {
         // Get or create a wallet with initial data read from rusqlite database.
         // We use a single descriptor for the wallet, so we don't need to specify the change descriptor.
         // see https://docs.rs/bdk_wallet/latest/bdk_wallet/struct.Wallet.html#method.create_single
 
 
-        let master_xpub = key_manager.generate_master_xpub()?;
-        let public_key = key_manager.derive_public_key(master_xpub, key_index)?;
+        let public_key = key_manager.derive_keypair(key_index)?;
+        debug!("Wallet public key: {}", public_key);
         // This descriptor for the wallet indicates native segwit (wpkh) public key for regtest network
         // See https://docs.rs/bdk_wallet/1.2.0/bdk_wallet/macro.descriptor.html
         // and https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md#examples
@@ -198,16 +193,14 @@ impl Wallet {
             .load_wallet(conn)?;
 
         // If the wallet is not found, create a new one
-        let mut wallet = match wallet_opt {
+        let mut wallet = match wallet_opt { 
             Some(wallet) => wallet,
             None => BdkWallet::create_single(descriptor.to_string())
                 .network(network)
                 .create_wallet( conn)?,
         };
-
         // We use a custom signer using the key manager see
         // https://docs.rs/bdk_wallet/2.0.0/bdk_wallet/signer/index.html
-        // Convert Rc<KeyManager> to Arc<KeyManager> for the signer
         let signer = KeyManagerSigner::new(key_manager.clone(), public_key)?;
         wallet.add_signer(KeychainKind::External, SignerOrdering::default(), Arc::new(signer));
 
@@ -278,7 +271,21 @@ mod tests {
     use bitcoin::key::rand;
     use bitcoind::bitcoind::Bitcoind;
     use std::{str::FromStr, time::Instant};
+    use tracing_subscriber::EnvFilter;
 
+
+    fn config_trace() {
+        let default_modules = ["info", "bitcoincore_rpc=off", "hyper=off","bollard=off"];
+
+        let filter = EnvFilter::builder()
+            .parse(default_modules.join(","))
+            .expect("Invalid filter");
+
+        tracing_subscriber::fmt()
+            .with_target(true)
+            .with_env_filter(filter)
+            .init();
+    }
 
     fn generate_random_string() -> String {
         use rand::Rng;
@@ -287,6 +294,7 @@ mod tests {
     }
 
     fn clean_and_load_config(config_path: &str) -> Result<WalletConfig, anyhow::Error> {
+        config_trace();
         let base_path = "/tmp/test_wallet";
 
         let mut config = bitvmx_settings::settings::load_config_file::<WalletConfig>(Some(

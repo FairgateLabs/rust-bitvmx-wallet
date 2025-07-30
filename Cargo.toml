@@ -22,7 +22,7 @@ ctrlc = "3.3.0"
 
 [features]
 # Enable regtest-specific functionality for local testing
-regtest = []
+example = []
 
 [dev-dependencies]
 bitcoind = { path = "../rust-bitcoind" }

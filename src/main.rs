@@ -1,16 +1,16 @@
 mod cli;
 pub mod config;
 pub mod errors;
-pub mod wallet;
+pub mod old_wallet;
 
 use clap::Parser;
 use cli::{Cli, Commands};
-use config::WalletConfig;
+use config::Config;
 use std::process;
 use tracing_subscriber::EnvFilter;
-use wallet::Wallet;
+use old_wallet::Wallet;
 
-fn config_trace_aux() {
+fn config_trace() {
     let default_modules = ["info"];
 
     let filter = EnvFilter::builder()
@@ -28,7 +28,7 @@ fn main() {
 
     // Use the config file specified by the user
     let config =
-        match bitvmx_settings::settings::load_config_file::<WalletConfig>(Some(cli.config.clone()))
+        match bitvmx_settings::settings::load_config_file::<Config>(Some(cli.config.clone()))
         {
             Ok(cfg) => cfg,
             Err(e) => {
@@ -36,7 +36,7 @@ fn main() {
                 process::exit(1);
             }
         };
-    config_trace_aux();
+    config_trace();
 
     let init_client = match &cli.command {
         Commands::BtcToSat { .. } => false,

@@ -9,6 +9,7 @@ pub struct WalletConfig {
     pub key_manager: KeyManagerConfig,
     pub key_storage: StorageConfig,
     pub storage: StorageConfig,
+    pub funding_key: String,
 }
 
 impl WalletConfig {
@@ -17,12 +18,14 @@ impl WalletConfig {
         key_manager: KeyManagerConfig,
         key_storage: StorageConfig,
         storage: StorageConfig,
+        funding_key: String,
     ) -> Result<WalletConfig, anyhow::Error> {
         Ok(WalletConfig {
             bitcoin,
             key_manager,
             key_storage,
             storage,
+            funding_key,
         })
     }
 }

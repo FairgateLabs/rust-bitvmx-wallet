@@ -7,10 +7,12 @@ bitcoin:
 
 key_manager:
   network: regtest
-
+  
 key_storage:
   password: secret_password_1
   path: /tmp/regtest/wallet/keys.db
 
 storage:
   path: /tmp/regtest/wallet/storage.db
+
+funding_key: cVt4o7BGAig1UXywgGSmARhxMdzP5qvQsxKkSsc1XEkw3tDTQFpy

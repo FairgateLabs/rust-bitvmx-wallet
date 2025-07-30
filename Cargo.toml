@@ -10,7 +10,7 @@ bitvmx-bitcoin-rpc = { path = "../rust-bitvmx-bitcoin-rpc" }
 bitvmx-key-manager = { path = "../rust-bitvmx-key-manager" }
 bitvmx-settings = { path = "../rust-bitvmx-settings" }
 thiserror = "2.0.12"
-bitcoin = { version = "=0.32.5", features = ["std", "rand-std"] }
+bitcoin = { version = "0.32.6", features = ["std", "rand-std"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 serde = "1.0.204"

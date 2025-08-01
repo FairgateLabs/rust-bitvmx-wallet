@@ -17,4 +17,4 @@ storage:
 
 wallet:
   funding_key: cVt4o7BGAig1UXywgGSmARhxMdzP5qvQsxKkSsc1XEkw3tDTQFpy
-  db_path: /tmp/regtest/wallet/wallet.db
+  #optional db_path: /tmp/regtest/wallet/wallet.db

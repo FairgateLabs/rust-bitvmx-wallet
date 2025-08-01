@@ -1,8 +1,9 @@
 #[allow(unused_imports)]
 use crate::{config::WalletConfig, errors::WalletError};
-use bitcoin::{secp256k1::Secp256k1, Address, Amount, Block, FeeRate, Network, PrivateKey, PublicKey, ScriptBuf, Transaction, Txid};
+use bitcoin::{secp256k1::Secp256k1, Address, Amount, Block, FeeRate, Network, PrivateKey, PublicKey, ScriptBuf, Transaction, Txid, XOnlyPublicKey};
 
 use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+use protocol_builder::scripts::{self, ProtocolScript};
 use tracing::{debug, info};
 
 use bdk_wallet::{rusqlite::Connection, Balance, KeychainKind, PersistedWallet, SignOptions, TxOrdering, Wallet as BdkWallet};
@@ -69,6 +70,8 @@ impl Wallet {
         let mut psbt = {
             let mut builder = self.bdk_wallet.build_tx();
             builder
+                // This is important to ensure the order of the outputs is the same as the one used in the builder
+                // default is TxOrdering::Shuffle
                 .ordering(TxOrdering::Untouched)
                 .add_recipient(to_address.script_pubkey(), Amount::from_sat(amount));
             if let Some(fee_rate) = fee_rate {
@@ -89,14 +92,26 @@ impl Wallet {
     }
 
     pub fn pub_key_to_p2wpk(&mut self, public_key: &PublicKey) -> Result<Address, anyhow::Error> {
-        let script_pubkey = ScriptBuf::new_p2wpkh(&public_key.wpubkey_hash()?);
-        println!("script_pubkey: {:?}", script_pubkey);
-        let address = Address::from_script(&script_pubkey, self.network)?;
+        let script = ScriptBuf::new_p2wpkh(&public_key.wpubkey_hash()?);
+        let address = Address::from_script(&script, self.network)?;
         Ok(address)
     }
 
     pub fn send_to_p2wpkh(&mut self, public_key: &PublicKey, amount: u64, fee_rate: Option<u64>) -> Result<Transaction, anyhow::Error> {
         let address = self.pub_key_to_p2wpk(public_key)?;
+        let tx = self.send_to_address(&address.to_string(), amount, fee_rate)?;
+        Ok(tx)
+    }
+
+    pub fn pub_key_to_p2tr(&mut self, x_public_key: &XOnlyPublicKey, tap_leaves: &[ProtocolScript]) -> Result<Address, anyhow::Error> {
+        let tap_spend_info = scripts::build_taproot_spend_info(self.bdk_wallet.secp_ctx(), x_public_key, tap_leaves)?;
+        let script = ScriptBuf::new_p2tr_tweaked(tap_spend_info.output_key());
+        let address = Address::from_script(&script, self.network)?;
+        Ok(address)
+    }
+
+    pub fn send_to_p2tr(&mut self, x_public_key: &XOnlyPublicKey, tap_leaves: &[ProtocolScript], amount: u64, fee_rate: Option<u64>) -> Result<Transaction, anyhow::Error> {
+        let address = self.pub_key_to_p2tr(x_public_key, tap_leaves)?;
         let tx = self.send_to_address(&address.to_string(), amount, fee_rate)?;
         Ok(tx)
     }
@@ -268,6 +283,10 @@ pub trait RegtestWallet {
     /// This function is only available in regtest mode
     fn fund_p2wpkh(&mut self, public_key: &PublicKey, amount: u64) -> Result<Transaction, anyhow::Error>;
 
+    /// Send funds to a specific p2tr public key and mines 1 block
+    /// This function is only available in regtest mode
+    fn fund_p2tr(&mut self, x_public_key: &XOnlyPublicKey, tap_leaves: &[ProtocolScript], amount: u64) -> Result<Transaction, anyhow::Error>;
+
     /// Clear the database
     /// This function is only available in regtest mode
     fn clear_db(wallet_config: WalletConfig) -> Result<(), anyhow::Error>;
@@ -349,6 +368,12 @@ impl RegtestWallet for Wallet {
     /// This function is only available in regtest mode
     fn fund_p2wpkh(&mut self, public_key: &PublicKey, amount: u64) -> Result<Transaction, anyhow::Error> {
         let address = self.pub_key_to_p2wpk(public_key)?;
+        let tx = self.fund_address(&address.to_string(), amount)?;
+        Ok(tx)
+    }
+
+    fn fund_p2tr(&mut self, x_public_key: &XOnlyPublicKey, tap_leaves: &[ProtocolScript], amount: u64) -> Result<Transaction, anyhow::Error> {
+        let address = self.pub_key_to_p2tr(x_public_key, tap_leaves)?;
         let tx = self.fund_address(&address.to_string(), amount)?;
         Ok(tx)
     }
@@ -517,6 +542,7 @@ mod tests {
         let mut psbt = {
             let mut builder = wallet.bdk_wallet.build_tx();
             builder
+                .ordering(TxOrdering::Untouched)
                 .add_recipient(to_address.script_pubkey(), Amount::from_sat(50_000));
             builder.finish()? //Returns a PartialSignedBitcoinTransaction https://docs.rs/bitcoin/0.32.6/bitcoin/psbt/struct.Psbt.html
         };

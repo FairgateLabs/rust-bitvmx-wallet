@@ -14,69 +14,31 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Create a new secret key
-    CreateWallet { identifier: String },
-    /// Import a secret key
-    ImportKey {
-        identifier: String,
-        secret_key: String,
-    },
-    /// Export a wallet
-    ExportWallet { identifier: String },
-    /// Add funding
-    AddFunding {
-        identifier: String,
-        funding_id: String,
-        outpoint: String,
-        amount: u64,
-    },
-    /// Remove funding
-    RemoveFunding {
-        identifier: String,
-        funding_id: String,
-    },
     /// Fund an address
-    FundAddress {
-        identifier: String,
-        funding_id: String,
-        to_pubkey: String,
-        #[arg(value_delimiter = ',')]
-        amount: Vec<u64>,
-        fee: u64,
-        #[arg(long, default_value = "false")]
-        taproot: bool,
-        #[arg(long, default_value = "false")]
-        confirm: bool,
+    SendToAddress {
+        to_address: String,
+        amount: u64,
+        fee_rate: Option<u64>,
     },
-    /// Confirm a transfer
-    ConfirmTransfer {
-        identifier: String,
-        funding_id: String,
+    /// Sync the wallet with the Bitcoin node
+    SyncWallet,
+    /// Cancel a transfer
+    CancelTx {
+        txid: String,
     },
-    /// Revert a transfer
-    RevertTransfer {
-        identifier: String,
-        funding_id: String,
-    },
-    /// List funds
-    ListFunds { identifier: String },
+    /// List unspent outputs
+    ListUnspent,
     /// Mine blocks (regtest only)
     Mine { num_blocks: u64 },
-    /// Regtest fund
-    RegtestFund {
-        identifier: String,
-        funding_id: String,
+    /// Regtest fund the wallet with 150 BTC
+    RegtestFundWallet,
+    /// Send funds to an address and mine 1 block
+    SendToAddressAndMine {
+        to_address: String,
         amount: u64,
     },
     /// Convert BTC to SATS
     BtcToSat { btc: f64 },
-    /// List wallets
-    ListWallets,
-    /// Import partial private keys to create a wallet from the aggregated private key
-    ImportPartialPrivateKeys {
-        identifier: String,
-        #[arg(value_delimiter = ',')]
-        private_keys: Vec<String>,
-        network: bitcoin::Network,
-    },
+    /// Get wallet info
+    WalletInfo,
 }

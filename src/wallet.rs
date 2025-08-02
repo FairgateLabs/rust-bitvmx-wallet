@@ -6,7 +6,7 @@ use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
 use protocol_builder::scripts::{self, ProtocolScript};
 use tracing::{debug, info};
 
-use bdk_wallet::{rusqlite::Connection, Balance, KeychainKind, PersistedWallet, SignOptions, TxOrdering, Wallet as BdkWallet};
+use bdk_wallet::{Balance, KeychainKind, LocalOutput, PersistedWallet, rusqlite::Connection, SignOptions, TxOrdering, Wallet as BdkWallet, WalletTx};
 use ctrlc;
 use bdk_bitcoind_rpc::{Emitter, bitcoincore_rpc::{Auth, Client, RpcApi},};
 use std::{str::FromStr,sync::{mpsc::sync_channel, Arc}, thread::spawn, fs, path::Path};
@@ -21,9 +21,9 @@ enum Emission {
 pub struct Wallet {
     pub network: bitcoin::Network,
     pub rpc_client: Arc<Client>,
-    conn: Connection,
     pub bdk_wallet: PersistedWallet<Connection>,
     pub public_key: String,
+    conn: Connection,
 }
 
 impl Wallet {
@@ -46,9 +46,9 @@ impl Wallet {
         Ok(Self {
             network: bitcoin_config.network,
             rpc_client,
-            conn,
             bdk_wallet,
             public_key: public_key.to_string(),
+            conn,
         })
     }
 
@@ -64,9 +64,8 @@ impl Wallet {
         Ok(address_info.address)
     }
 
-    pub fn send_to_address(&mut self, address: &str, amount: u64, fee_rate: Option<u64>) -> Result<Transaction, anyhow::Error> {
+    pub fn send_to_address(&mut self, to_address: &Address, amount: u64, fee_rate: Option<u64>) -> Result<Transaction, anyhow::Error> {
         // See https://docs.rs/bdk_wallet/latest/bdk_wallet/struct.TxBuilder.html
-        let to_address = Address::from_str(address)?.assume_checked();
         let mut psbt = {
             let mut builder = self.bdk_wallet.build_tx();
             builder
@@ -99,7 +98,7 @@ impl Wallet {
 
     pub fn send_to_p2wpkh(&mut self, public_key: &PublicKey, amount: u64, fee_rate: Option<u64>) -> Result<Transaction, anyhow::Error> {
         let address = self.pub_key_to_p2wpk(public_key)?;
-        let tx = self.send_to_address(&address.to_string(), amount, fee_rate)?;
+        let tx = self.send_to_address(&address, amount, fee_rate)?;
         Ok(tx)
     }
 
@@ -112,7 +111,7 @@ impl Wallet {
 
     pub fn send_to_p2tr(&mut self, x_public_key: &XOnlyPublicKey, tap_leaves: &[ProtocolScript], amount: u64, fee_rate: Option<u64>) -> Result<Transaction, anyhow::Error> {
         let address = self.pub_key_to_p2tr(x_public_key, tap_leaves)?;
-        let tx = self.send_to_address(&address.to_string(), amount, fee_rate)?;
+        let tx = self.send_to_address(&address, amount, fee_rate)?;
         Ok(tx)
     }
 
@@ -120,6 +119,16 @@ impl Wallet {
         let tx_hash = self.rpc_client.send_raw_transaction(tx)?;
         self.sync_wallet()?;
         Ok(tx_hash)
+    }
+
+    pub fn get_wallet_tx(&self, txid: Txid) -> Result<Option<WalletTx>, anyhow::Error> {
+        let tx = self.bdk_wallet.get_tx(txid);
+        Ok(tx)
+    }
+
+    pub fn list_unspent(&self) -> Result<Vec<LocalOutput>, anyhow::Error> {
+        let unspent = self.bdk_wallet.list_unspent().collect::<Vec<_>>();
+        Ok(unspent)
     }
 
     pub fn cancel_tx(&mut self, tx: &Transaction) -> Result<(), anyhow::Error> {
@@ -258,7 +267,6 @@ impl Wallet {
 
 /// Extension trait for regtest-specific wallet functions
 /// This trait provides utilities that are only available in regtest mode
-#[cfg(any(test, feature = "example"))]
 pub trait RegtestWallet {
     /// Check if the wallet is in regtest mode
     fn check_network(&self) -> Result<(), anyhow::Error>;
@@ -271,13 +279,13 @@ pub trait RegtestWallet {
     /// This function is only available in regtest mode
     fn mine(&self, num_blocks: u64) -> Result<Vec<Txid>, anyhow::Error>;
 
-    /// Fund the wallet with 50 BTC
+    /// Fund the wallet with 150 BTC
     /// This function is only available in regtest mode
     fn fund(&mut self) -> Result<(), anyhow::Error>;
 
     /// Send funds to a specific address and mines 1 block
     /// This function is only available in regtest mode
-    fn fund_address(&mut self, address: &str, amount: u64) -> Result<Transaction, anyhow::Error>;
+    fn fund_address(&mut self, to_address: &Address, amount: u64) -> Result<Transaction, anyhow::Error>;
 
     /// Send funds to a specific p2wpkh public key and mines 1 block
     /// This function is only available in regtest mode
@@ -292,7 +300,6 @@ pub trait RegtestWallet {
     fn clear_db(wallet_config: WalletConfig) -> Result<(), anyhow::Error>;
 }
 
-#[cfg(any(test, feature = "example"))]
 impl RegtestWallet for Wallet {
 
     fn check_network(&self) -> Result<(), anyhow::Error> {
@@ -333,14 +340,14 @@ impl RegtestWallet for Wallet {
         self.mine_to_address(num_blocks, address)
     }
 
-    /// Fund the wallet with 50 BTC
+    /// Fund the wallet with 150 BTC
     /// This function is only available in regtest mode
     fn fund(&mut self) -> Result<(), anyhow::Error> {
         self.check_network()?;
 
         let address = self.receive_address()?;
-        // Mine 1 block to the receive address
-        self.mine_to_address(1, &address.to_string())?;
+        // Mine 1 block to the receive address to get 50 BTC
+        self.mine_to_address(3, &address.to_string())?;
         // Mine 100 blocks to ensure the coinbase output is mature
         self.mine(100)?;
         // Sync the wallet with the Bitcoin node to the latest block
@@ -351,11 +358,11 @@ impl RegtestWallet for Wallet {
 
     /// Send funds to a specific address and mines 1 block
     /// This function is only available in regtest mode
-    fn fund_address(&mut self, address: &str, amount: u64) -> Result<Transaction, anyhow::Error> {
+    fn fund_address(&mut self, to_address: &Address, amount: u64) -> Result<Transaction, anyhow::Error> {
         self.check_network()?;
 
         // Mine 1 block to the receive address
-        let tx = self.send_to_address(address, amount, None)?;
+        let tx = self.send_to_address(to_address, amount, None)?;
         // Mine 100 blocks to ensure the coinbase output is mature
         self.mine(1)?;
         // Sync the wallet with the Bitcoin node to the latest block
@@ -368,13 +375,13 @@ impl RegtestWallet for Wallet {
     /// This function is only available in regtest mode
     fn fund_p2wpkh(&mut self, public_key: &PublicKey, amount: u64) -> Result<Transaction, anyhow::Error> {
         let address = self.pub_key_to_p2wpk(public_key)?;
-        let tx = self.fund_address(&address.to_string(), amount)?;
+        let tx = self.fund_address(&address, amount)?;
         Ok(tx)
     }
 
     fn fund_p2tr(&mut self, x_public_key: &XOnlyPublicKey, tap_leaves: &[ProtocolScript], amount: u64) -> Result<Transaction, anyhow::Error> {
         let address = self.pub_key_to_p2tr(x_public_key, tap_leaves)?;
-        let tx = self.fund_address(&address.to_string(), amount)?;
+        let tx = self.fund_address(&address, amount)?;
         Ok(tx)
     }
 
@@ -499,7 +506,8 @@ mod tests {
         assert_eq!(balance.total(), new_balance.total(), "Balance should be the same after syncing the wallet");
 
         // Build a transaction to send 50000 satoshis to a taproot address
-        wallet.send_to_address("tb1pn3q7tv78u5sqyu6ngr7w82krtdfuf4a5tv3udkgy4ners2znxehsse5urx", 50_000, None)?;
+        let to_address = Address::from_str("tb1pn3q7tv78u5sqyu6ngr7w82krtdfuf4a5tv3udkgy4ners2znxehsse5urx")?.assume_checked();
+        wallet.send_to_address(&to_address, 50_000, None)?;
 
         // If needed it can be speeded up https://docs.rs/bdk_wallet/2.0.0/bdk_wallet/struct.Wallet.html#method.build_fee_bump
 
@@ -590,7 +598,7 @@ mod tests {
         let amount = Amount::from_sat(50_000);
         let address = Address::from_str("tb1pn3q7tv78u5sqyu6ngr7w82krtdfuf4a5tv3udkgy4ners2znxehsse5urx")?.assume_checked();
 
-        let tx = wallet.fund_address(&address.to_string(), amount.to_sat())?;
+        let tx = wallet.fund_address(&address, amount.to_sat())?;
         let new_balance = wallet.get_balance()?;
         assert_eq!(tx.output[0].value, amount, "Output should be 50000 satoshis");
         assert_eq!(tx.output[0].script_pubkey, address.script_pubkey(), "Output should be to the correct address");

@@ -20,9 +20,5 @@ bdk_wallet = { version = "2.0.0", features = ["rusqlite"] }
 bdk_bitcoind_rpc = "0.20.0"
 ctrlc = "3.3.0"
 
-[features]
-# Enable regtest-specific functionality for local testing
-example = []
-
 [dev-dependencies]
 bitcoind = { path = "../rust-bitcoind" }

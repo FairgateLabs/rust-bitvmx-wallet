@@ -4,7 +4,7 @@ pub mod config;
 pub mod errors;
 pub mod wallet;
 
-use bitcoin::{address::NetworkUnchecked, Address, Txid};
+use bitcoin::{Txid};
 use clap::Parser;
 use cli::{Cli, Commands};
 use config::Config;
@@ -55,21 +55,7 @@ fn main() {
             amount,
             fee_rate,
         } => {
-            let to_address = match to_address.parse::<Address<NetworkUnchecked>>() {
-                Ok(addr) => addr,
-                Err(e) => {
-                    eprintln!("Invalid address: {e}");
-                    process::exit(1);
-                }
-            };
-            let to_address = match to_address.require_network(wallet.network) {
-                Ok(addr) => addr,
-                Err(e) => {
-                    eprintln!("Invalid network {} for address: {e}", wallet.network);
-                    process::exit(1);
-                }
-            };
-            match wallet.send_to_address(&to_address, *amount, *fee_rate) {
+            match wallet.send_to_address(to_address, *amount, *fee_rate) {
                 Ok(tx) => println!("Funded address, txid: {}", tx.compute_txid()),
                 Err(e) => eprintln!("Error: {e}"),
             }
@@ -125,21 +111,7 @@ fn main() {
             to_address,
             amount,
         } => {
-            let to_address = match to_address.parse::<Address<NetworkUnchecked>>() {
-                Ok(addr) => addr,
-                Err(e) => {
-                    eprintln!("Invalid address: {e}");
-                    process::exit(1);
-                }
-            };
-            let to_address = match to_address.require_network(wallet.network) {
-                Ok(addr) => addr,
-                Err(e) => {
-                    eprintln!("Invalid network {} for address: {e}", wallet.network);
-                    process::exit(1);
-                }
-            };
-            match wallet.fund_address(&to_address, *amount) {
+            match wallet.fund_address(to_address, *amount) {
                 Ok(_) => println!("Funded address and mined 1 block"),
                 Err(e) => eprintln!("Error: {e}"),
             }
@@ -152,7 +124,7 @@ fn main() {
         Commands::WalletInfo => {
             let pubkey = wallet.public_key.clone();
             let address = wallet.receive_address().unwrap();
-            let balance = wallet.get_balance().unwrap();
+            let balance = wallet.balance().unwrap();
             println!("Wallet:");
             println!("- Address: {address}");
             println!("- Balance: {balance}");

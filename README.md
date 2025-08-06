@@ -24,6 +24,14 @@ It is not production-ready, has not been audited, and future updates may introdu
 - All Bitcoin transactions (except the initial regtest funding helper) are constructed and signed by this CLI, not by the Bitcoin Core wallet.
 - For **regtest only**: if you use the `regtest-fund` helper, the wallet name in your config must match an existing wallet in your node.
 
+## Test
+
+To run test use:
+
+```sh
+cargo test -- --ignored --test-threads=1  
+```
+
 ## Usage
 
 ```sh

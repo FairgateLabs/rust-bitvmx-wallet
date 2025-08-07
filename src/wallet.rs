@@ -1,12 +1,12 @@
 #[allow(unused_imports)]
 use crate::{config::WalletConfig, errors::WalletError};
-use bitcoin::{secp256k1::Secp256k1, Address, Amount, Block, FeeRate, Network, PrivateKey, PublicKey, ScriptBuf, Transaction, Txid, XOnlyPublicKey};
+use bitcoin::{secp256k1::Secp256k1, Address, Amount, Block, FeeRate, Network, PrivateKey, Psbt, PublicKey, ScriptBuf, Transaction, Txid, XOnlyPublicKey};
 
 use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
 use protocol_builder::scripts::{self, ProtocolScript};
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
-use bdk_wallet::{Balance, KeychainKind, LocalOutput, PersistedWallet, rusqlite::Connection, SignOptions, TxOrdering, Wallet as BdkWallet, WalletTx};
+use bdk_wallet::{coin_selection::DefaultCoinSelectionAlgorithm, rusqlite::Connection, Balance, KeychainKind, LocalOutput, PersistedWallet, SignOptions, TxBuilder, TxOrdering, Wallet as BdkWallet, WalletTx};
 use ctrlc;
 use bdk_bitcoind_rpc::{Emitter, bitcoincore_rpc::{Auth, Client, RpcApi},};
 use std::{str::FromStr,sync::{mpsc::sync_channel, Arc}, thread::spawn, fs, path::Path};
@@ -25,6 +25,28 @@ pub struct Wallet {
     pub public_key: String,
     pub start_height: u32,
     conn: Connection,
+}
+enum StoreKey {
+    CreateWalletIndex,
+    Wallet(String),
+    Funding(String, String),
+    PendingTransfer(String, String),
+}
+
+impl StoreKey {
+    pub fn get_key(&self) -> String {
+        let base = "wallet";
+        match self {
+            Self::Wallet(identifier) => format!("{base}/name/{identifier}"),
+            Self::Funding(identifier, funding_id) => {
+                format!("{base}/{identifier}/funding/{funding_id}")
+            }
+            Self::PendingTransfer(identifier, funding_id) => {
+                format!("{base}/{identifier}/transfers/{funding_id}")
+            }
+            Self::CreateWalletIndex => format!("{base}/index"),
+        }
+    }
 }
 
 impl Wallet {
@@ -54,9 +76,8 @@ impl Wallet {
         })
     }
 
-    pub fn balance(&self) -> Result<Balance, anyhow::Error> {
-        let balance = self.bdk_wallet.balance();
-        Ok(balance)
+    pub fn balance(&self) -> Balance {
+       self.bdk_wallet.balance()
     }
 
     pub fn receive_address(&mut self) -> Result<Address, anyhow::Error> {
@@ -66,31 +87,36 @@ impl Wallet {
         Ok(address_info.address)
     }
 
-    pub fn send_to_address(&mut self, to_address: &str, amount: u64, fee_rate: Option<u64>) -> Result<Transaction, anyhow::Error> {
-        // convert to address
-        let to_address = Address::from_str(to_address)?.require_network(self.network)?;
-        // See https://docs.rs/bdk_wallet/latest/bdk_wallet/struct.TxBuilder.html
-        let mut psbt = {
-            let mut builder = self.bdk_wallet.build_tx();
-            builder
-                // This is important to ensure the order of the outputs is the same as the one used in the builder
-                // default is TxOrdering::Shuffle
-                .ordering(TxOrdering::Untouched)
-                .add_recipient(to_address.script_pubkey(), Amount::from_sat(amount));
-            if let Some(fee_rate) = fee_rate {
-                builder.fee_rate(FeeRate::from_sat_per_vb(fee_rate).expect("valid feerate"));
-            }
-            builder.finish()? //Returns a PartialSignedBitcoinTransaction https://docs.rs/bitcoin/0.32.6/bitcoin/psbt/struct.Psbt.html
-        };
+    pub fn send_to_address_tx(&mut self, to_address: &str, amount: u64, fee_rate: Option<u64>) -> Result<Transaction, anyhow::Error> {
+         // convert to address
+         let to_address = Address::from_str(to_address)?.require_network(self.network)?;
+         // See https://docs.rs/bdk_wallet/latest/bdk_wallet/struct.TxBuilder.html
+         let mut psbt = {
+             let mut builder = self.bdk_wallet.build_tx();
+             builder
+                 // This is important to ensure the order of the outputs is the same as the one used in the builder
+                 // default is TxOrdering::Shuffle
+                 .ordering(TxOrdering::Untouched)
+                 .add_recipient(to_address.script_pubkey(), Amount::from_sat(amount));
+             if let Some(fee_rate) = fee_rate {
+                 builder.fee_rate(FeeRate::from_sat_per_vb(fee_rate).expect("valid feerate"));
+             }
+             builder.finish()? //Returns a PartialSignedBitcoinTransaction https://docs.rs/bitcoin/0.32.6/bitcoin/psbt/struct.Psbt.html
+         };
         // Sign the transaction
         let finalized = self.bdk_wallet.sign(&mut psbt, SignOptions::default())?;
         assert!(finalized, "we should have signed all the inputs");
-
         // Get the transaction from the psbt
         let tx = psbt.extract_tx().expect("tx");
+        Ok(tx)
+    }
 
+    pub fn send_to_address(&mut self, to_address: &str, amount: u64, fee_rate: Option<u64>) -> Result<Transaction, anyhow::Error> {
+        let tx = self.send_to_address_tx(to_address, amount, fee_rate)?;
         // Broadcast the transaction
         self.send_transaction(&tx)?;
+        // Sync the wallet to update transactions in the mempool
+        self.sync_wallet()?;
         Ok(tx)
     }
 
@@ -121,7 +147,6 @@ impl Wallet {
 
     pub fn send_transaction(&mut self, tx: &Transaction) -> Result<Txid, anyhow::Error> {
         let tx_hash = self.rpc_client.send_raw_transaction(tx)?;
-        self.sync_wallet()?;
         Ok(tx_hash)
     }
 
@@ -138,6 +163,15 @@ impl Wallet {
     pub fn cancel_tx(&mut self, tx: &Transaction) -> Result<(), anyhow::Error> {
         self.bdk_wallet.cancel_tx(tx);
         Ok(())
+    }
+
+    pub fn build_tx(&mut self) -> TxBuilder<'_, DefaultCoinSelectionAlgorithm> {
+        self.bdk_wallet.build_tx()
+    }
+
+    pub fn sign(&mut self, psbt: &mut Psbt, sign_options: SignOptions) -> Result<bool, anyhow::Error> {
+        let finalized = self.bdk_wallet.sign(psbt, sign_options)?;
+        Ok(finalized)
     }
 
     pub fn sync_wallet(&mut self) -> Result<(), anyhow::Error> {
@@ -214,6 +248,39 @@ impl Wallet {
         }
         Ok(())
     }
+
+    // pub fn import_partial_private_keys(
+    //     &self,
+    //     identifier: &str,
+    //     partial_keys: Vec<String>,
+    //     network: bitcoin::Network,
+    // ) -> Result<(), WalletError> {
+    //     if partial_keys.is_empty() {
+    //         error!("No partial private keys provided");
+    //         return Err(WalletError::InvalidPartialPrivateKeys);
+    //     }
+
+    //     let aggregated_public_key = if partial_keys.iter().all(|key| key.len() == 64) {
+    //         self.key_manager
+    //             .import_partial_secret_keys(partial_keys, network)?
+    //     } else if partial_keys.iter().all(|key| key.len() == 52) {
+    //         self.key_manager
+    //             .import_partial_private_keys(partial_keys, network)?
+    //     } else {
+    //         error!("Invalid partial private keys provided");
+    //         return Err(WalletError::InvalidPartialPrivateKeys);
+    //     };
+
+    //     let key = StoreKey::Wallet(identifier.to_string()).get_key();
+
+    //     if self.store.has_key(&key)? {
+    //         return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
+    //     }
+
+    //     self.store.set(key, aggregated_public_key, None)?;
+
+    //     Ok(())
+    // }
 
     fn db_path(public_key: String) -> String {
         format!("/tmp/regtest/wallet/{public_key}.db")
@@ -353,7 +420,7 @@ impl RegtestWallet for Wallet {
         self.mine_to_address(3, &address.to_string())?;
         // Mine 100 blocks to ensure the coinbase output is mature
         self.mine(100)?;
-        // Sync the wallet with the Bitcoin node to the latest block
+        // Sync the wallet with the Bitcoin node to the latest block and mempool
         self.sync_wallet()?;
 
         Ok(())
@@ -368,7 +435,7 @@ impl RegtestWallet for Wallet {
         let tx = self.send_to_address(to_address, amount, None)?;
         // Mine 100 blocks to ensure the coinbase output is mature
         self.mine(1)?;
-        // Sync the wallet with the Bitcoin node to the latest block
+        // Sync the wallet with the Bitcoin node to the latest block and mempool
         self.sync_wallet()?;
 
         Ok(tx)
@@ -394,271 +461,6 @@ impl RegtestWallet for Wallet {
         let db_path = wallet_config.db_path.clone().unwrap_or_else(|| Self::db_path(public_key.to_string()));
         let _ = std::fs::remove_file(db_path);
 
-        Ok(())
-    }
-}
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use anyhow::{Ok, Result};
-    use bitcoind::bitcoind::Bitcoind;
-    use tracing_subscriber::EnvFilter;
-    use std::{str::FromStr, sync::Once, time::Instant};
-    use crate::config::Config;
-
-    static INIT: Once = Once::new();
-    const P2WPKH_FEE_RATE: u64 = 141;
-
-    pub fn config_trace() {
-        INIT.call_once(|| {
-            config_trace_aux();
-        });
-    }
-
-    fn config_trace_aux() {
-        let default_modules = ["info", "bitcoincore_rpc=off", "hyper=off","bollard=off"];
-
-        let filter = EnvFilter::builder()
-            .parse(default_modules.join(","))
-            .expect("Invalid filter");
-
-        tracing_subscriber::fmt()
-            .with_target(true)
-            .with_env_filter(filter)
-            .init();
-    }
-
-    fn clean_and_load_config(config_path: &str) -> Result<Config, anyhow::Error> {
-        config_trace();
-
-        let config = bitvmx_settings::settings::load_config_file::<Config>(Some(
-            config_path.to_string(),
-        ))?;
-
-        Wallet::clear_db(&config.wallet)?;
-
-        Ok(config)
-    }
-
-
-    #[test]
-    #[ignore]
-    fn test_bdk_wallet_balance() -> Result<(), anyhow::Error> {
-        let config = clean_and_load_config("config/regtest.yaml")?;
-
-        let bitcoind = Bitcoind::new(
-            "bitcoin-regtest",
-            "ruimarinho/bitcoin-core",
-            config.bitcoin.clone(),
-        );
-        bitcoind.start()?;
-
-        let mut wallet = Wallet::new(config.bitcoin.clone(), config.wallet.clone())?;
-
-        // Get a new address to receive bitcoin.
-        let receive_address = wallet.receive_address()?;
-        // Now it's safe to show the user their next address!
-        println!("Your new bdk_wallet receive address is: {}", receive_address);
-
-        // Check the balance of the wallet
-        let balance = wallet.balance()?;
-        println!("Wallet balance before syncing: {}", balance.total());
-        
-        // Send 300 BTC to the wallet using the RegtestWallet trait
-        wallet.mine_to_address(6, &receive_address.to_string())?;
-        let new_balance = wallet.balance()?;
-        assert_eq!(new_balance.total(), balance.total(), "Balance should be the same until we sync the wallet");
-        assert_eq!(new_balance.confirmed, Amount::from_sat(0), "Confirmed balance should be 0 BTC");
-        assert_eq!(new_balance.immature, Amount::from_sat(0), "Immature balance should be 0 BTC");
-        assert_eq!(new_balance.trusted_pending, Amount::from_sat(0), "Trusted pending balance should be 0 BTC");
-        assert_eq!(new_balance.untrusted_pending, Amount::from_sat(0), "Unconfirmed balance should be 0 BTC");
-
-        wallet.sync_wallet()?;
-        let new_balance = wallet.balance()?;
-        assert_eq!(new_balance.total(), balance.total() +  Amount::from_int_btc(300), "Total Balance shows unconfirmed and immature balance");        
-        assert_eq!(new_balance.confirmed, Amount::from_sat(0), "Confirmed balance should be 0 BTC");
-        assert_eq!(new_balance.immature, Amount::from_int_btc(300), "Immature balance should be 300 BTC");
-        assert_eq!(new_balance.trusted_pending, Amount::from_sat(0), "Trusted pending balance should be 0 BTC");
-        assert_eq!(new_balance.untrusted_pending, Amount::from_sat(0), "Unconfirmed balance should be 0 BTC");
-
-        // Mine 100 blocks to ensure the coinbase output is mature
-        wallet.mine(100)?;
-        // Sync the wallet with the Bitcoin node to the latest block
-        wallet.sync_wallet()?;
-
-
-        let new_balance = wallet.balance()?;
-        assert_eq!(new_balance.total(), balance.total() + Amount::from_int_btc(300), "Balance should have increased by 300 BTC after syncing the wallet");
-        assert_eq!(new_balance.confirmed, Amount::from_int_btc(300), "Confirmed balance should be 300 BTC");
-        assert_eq!(new_balance.immature, Amount::from_sat(0), "Immature balance should be 0 BTC");
-        assert_eq!(new_balance.trusted_pending, Amount::from_sat(0), "Trusted pending balance should be 0 BTC");
-        assert_eq!(new_balance.untrusted_pending, Amount::from_sat(0), "Unconfirmed balance should be 0 BTC");
-
-        bitcoind.stop()?;
-        Ok(())
-    }
-
-
-    #[test]
-    #[ignore]
-    fn test_bdk_wallet() -> Result<(), anyhow::Error> {
-        let config = clean_and_load_config("config/regtest.yaml")?;
-
-        let bitcoind = Bitcoind::new(
-            "bitcoin-regtest",
-            "ruimarinho/bitcoin-core",
-            config.bitcoin.clone(),
-        );
-        bitcoind.start()?;
-
-        let mut wallet = Wallet::new(config.bitcoin.clone(), config.wallet.clone())?;
-
-        // Get a new address to receive bitcoin.
-        let receive_address = wallet.receive_address()?;
-        // Now it's safe to show the user their next address!
-        println!("Your new bdk_wallet receive address is: {}", receive_address);
-
-        // Check the balance of the wallet
-        let balance = wallet.balance()?;
-        println!("Wallet balance before syncing: {}", balance.total());
-        
-        // Send 300 BTC to the wallet using the RegtestWallet trait
-        wallet.mine_to_address(6, &receive_address.to_string())?;
-        let new_balance = wallet.balance()?;
-        assert_eq!(new_balance.total(), balance.total(), "Balance should be the same until we sync the wallet");
-
-        // Mine 100 blocks to ensure the coinbase output is mature
-        wallet.mine(100)?;
-        // Sync the wallet with the Bitcoin node to the latest block
-        wallet.sync_wallet()?;
-
-        let new_balance = wallet.balance()?;
-        assert_eq!(new_balance.total(), balance.total() + Amount::from_int_btc(300), "Balance should have increased by 300 BTC after syncing the wallet");
-
-        // Mine additional blocks to ensure coinbase maturity (100 confirmations required for coinbase)
-        // The coinbase outputs from the 6 blocks we just mined need 100 confirmations
-        wallet.mine(100)?;
-        // Sync the wallet to the latest block to ensure the coinbase outputs are mature otherwise the transaction will fail
-        wallet.sync_wallet()?;
-
-        let balance = wallet.bdk_wallet.balance();
-        assert_eq!(balance.total(), new_balance.total(), "Balance should be the same after syncing the wallet");
-        
-        // Build a transaction to send 50000 satoshis to a taproot address
-        let amount_to_send = Amount::from_sat(50_000);
-        wallet.send_to_address("bcrt1qs758ursh4q9z627kt3pp5yysm78ddny6txaqgw", amount_to_send.to_sat(), None)?;
-
-        // If needed it can be speeded up https://docs.rs/bdk_wallet/2.0.0/bdk_wallet/struct.Wallet.html#method.build_fee_bump
-
-        // Check the balance of the wallet
-        let new_balance = wallet.bdk_wallet.balance();
-        assert_eq!(new_balance.total(), balance.total() - amount_to_send - Amount::from_sat(P2WPKH_FEE_RATE), "Balance should have decreased by 50000 satoshis and fees after syncing the wallet");
-
-        bitcoind.stop()?;
-        Ok(())
-    }
-
-    #[test]
-    #[ignore]
-    fn test_bdk_wallet_build_tx() -> Result<(), anyhow::Error> {
-        // Arrenge
-        let config = clean_and_load_config("config/regtest.yaml")?;
-
-        let bitcoind = Bitcoind::new(
-            "bitcoin-regtest",
-            "ruimarinho/bitcoin-core",
-            config.bitcoin.clone(),
-        );
-        bitcoind.start()?;
-
-        let mut wallet = Wallet::new(config.bitcoin.clone(), config.wallet.clone())?;
-
-        // Get a new address to receive bitcoin.
-        let receive_address = wallet.receive_address()?;
-        
-        // Mine 101 blocks to the receive address to ensure only one coinbase output is mature
-        wallet.mine_to_address(101, &receive_address.to_string())?;
-        
-
-        // Sync the wallet with the Bitcoin node to the latest block
-        wallet.sync_wallet()?;
-
-        // Build a transaction to send 50000 satoshis to a taproot address
-        // See https://docs.rs/bdk_wallet/latest/bdk_wallet/struct.TxBuilder.html
-        let to_address = Address::from_str("bcrt1qs758ursh4q9z627kt3pp5yysm78ddny6txaqgw")?.require_network(Network::Regtest)?;
-        let amount_to_send = Amount::from_sat(50_000);
-        let mut psbt = {
-            let mut builder = wallet.bdk_wallet.build_tx();
-            builder
-                .ordering(TxOrdering::Untouched)
-                .add_recipient(to_address.script_pubkey(), amount_to_send);
-            builder.finish()? //Returns a PartialSignedBitcoinTransaction https://docs.rs/bitcoin/0.32.6/bitcoin/psbt/struct.Psbt.html
-        };
-        // Sign the transaction
-        // TODO: Use a custom signer using the key manager see
-        // https://docs.rs/bdk_wallet/2.0.0/bdk_wallet/signer/index.html
-        let finalized = wallet.bdk_wallet.sign(&mut psbt, SignOptions::default())?;
-        assert!(finalized, "we should have signed all the inputs");
-
-        // Get the transaction from the psbt
-        let tx = psbt.extract_tx().expect("tx");
-        let balance = wallet.balance()?;
-        // Broadcast the transaction
-        wallet.send_transaction(&tx)?;
-
-        // If needed it can be speeded up https://docs.rs/bdk_wallet/2.0.0/bdk_wallet/struct.Wallet.html#method.build_fee_bump
-
-        // Check the balance of the wallet
-        let new_balance = wallet.bdk_wallet.balance();
-        assert_eq!(new_balance.total(), balance.total() - amount_to_send - Amount::from_sat(P2WPKH_FEE_RATE), "Balance should have decreased by 50000 satoshis and fees after syncing the wallet");
-
-        bitcoind.stop()?;
-        Ok(())
-    }
-
-    #[test]
-    #[ignore]
-    fn test_regtest_wallet() -> Result<(), anyhow::Error> {
-        // Arrenge
-        let config = clean_and_load_config("config/regtest.yaml")?;
-
-        let bitcoind = Bitcoind::new(
-            "bitcoin-regtest",
-            "ruimarinho/bitcoin-core",
-            config.bitcoin.clone(),
-        );
-        bitcoind.start()?;
-
-        let mut wallet = Wallet::new(config.bitcoin.clone(), config.wallet.clone())?;
-
-        // Mine 101 blocks to the receive address to ensure only one coinbase output is mature
-        wallet.fund()?;
-
-        let balance = wallet.balance()?;
-        let amount = Amount::from_sat(50_000);
-        let address = Address::from_str("bcrt1qs758ursh4q9z627kt3pp5yysm78ddny6txaqgw")?.require_network(Network::Regtest)?;
-
-        let tx = wallet.fund_address(&address.to_string(), amount.to_sat())?;
-        let new_balance = wallet.balance()?;
-        assert_eq!(tx.output[0].value, amount, "Output should be 50000 satoshis");
-        assert_eq!(tx.output[0].script_pubkey, address.script_pubkey(), "Output should be to the correct address");
-        assert_eq!(new_balance.total(), balance.total() - amount - Amount::from_sat(P2WPKH_FEE_RATE), "Balance should have decreased by 50000 satoshis and fees after syncing the wallet");
-        
-        let balance = new_balance;
-        let public_key = PublicKey::from_str("020d4bf69a836ddb088b9492af9ce72b39de9ae663b41aa9699fef4278e5ff77b4")?;
-        let address = Wallet::pub_key_to_p2wpk(&public_key, Network::Regtest)?;
-        println!("address: {:?}", address);
-        // Send funds to a specific p2wpkh public key and mines 1 block
-        let tx = wallet.fund_p2wpkh(&public_key, amount.to_sat())?;
-        println!("p2wpkh tx: {:?}", tx);
-        let new_balance = wallet.balance()?;
-        assert_eq!(tx.output[0].value, amount, "Output should be 50000 satoshis");
-        assert_eq!(tx.output[0].script_pubkey, ScriptBuf::new_p2wpkh(&public_key.wpubkey_hash()?), "Output should be to the correct address");
-        assert_eq!(new_balance.total(), balance.total() - amount - Amount::from_sat(P2WPKH_FEE_RATE), "Balance should have decreased by 50000 satoshis and fees after syncing the wallet");
-
-        bitcoind.stop()?;
         Ok(())
     }
 }

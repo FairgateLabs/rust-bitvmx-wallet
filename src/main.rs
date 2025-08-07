@@ -124,7 +124,7 @@ fn main() {
         Commands::WalletInfo => {
             let pubkey = wallet.public_key.clone();
             let address = wallet.receive_address().unwrap();
-            let balance = wallet.balance().unwrap();
+            let balance = wallet.balance();
             println!("Wallet:");
             println!("- Address: {address}");
             println!("- Balance: {balance}");

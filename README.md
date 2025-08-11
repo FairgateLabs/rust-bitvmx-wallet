@@ -138,14 +138,22 @@ storage:
 
 - **Testnet/Mainnet:**  
   Use `import-key` to import an existing secret key (WIF format) that controls funds on a P2WPKH (bech32) address.  
-  After importing, use `add-funding` to register the UTXO (by txid:vout and amount) that you control with this key.
+  After importing, use `sync-wallet` to update balance and spendable utxos that you control with this key.
 
 ## Important
 
-- For regtest, if you use the `regtest-fund` helper, the wallet name in your config must match an existing wallet in your node.
-- All other transactions are constructed and signed by this CLI, not by the Bitcoin Core wallet.
+- For regtest, if you use the `regtest-fund` helper, it will mint 103 blocks to send 150 BTC to the funded wallet.
+- All transactions are constructed and signed by this CLI, not by the Bitcoin Core wallet.
 - Local wallet/key data is stored in the paths specified in your config file.
+- Local wallet transactions data is stored under `/tmp/wallet_manager/` folder.
 
 ## License
 
 MIT
+
+## References
+
+- [Descriptors](https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md#examples)
+- [Bdk Wallet](https://docs.rs/bdk_wallet/latest/bdk_wallet/index.html)
+- [Tx Builder](https://docs.rs/bdk_wallet/2.0.0/bdk_wallet/struct.TxBuilder.html#method.finish)
+- [Example wallet rpc](https://github.com/bitcoindevkit/bdk_wallet/blob/master/examples/example_wallet_rpc/src/main.rs)

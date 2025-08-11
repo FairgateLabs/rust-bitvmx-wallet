@@ -16,5 +16,5 @@ storage:
   path: /tmp/testnet/wallet/storage.db
 
 wallet:
-  funding_key: cVt4o7BGAig1UXywgGSmARhxMdzP5qvQsxKkSsc1XEkw3tDTQFpy
   db_path: /tmp/testnet/wallet/wallet.db
+  start_height: 4621763

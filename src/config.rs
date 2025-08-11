@@ -5,19 +5,16 @@ use storage_backend::storage_config::StorageConfig;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct WalletConfig {
-    pub funding_key: String,
-    pub db_path: Option<String>,
+    pub db_path: String,
     pub start_height: Option<u32>,
 }
 
 impl WalletConfig {
     pub fn new(
-        funding_key: String,
-        db_path: Option<String>,
+        db_path: String,
         start_height: Option<u32>,
     ) -> Result<WalletConfig, anyhow::Error> {
         Ok(WalletConfig {
-            funding_key,
             db_path,
             start_height,
         })

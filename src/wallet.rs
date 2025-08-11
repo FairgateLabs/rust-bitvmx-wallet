@@ -1,15 +1,16 @@
 #[allow(unused_imports)]
 use crate::{config::WalletConfig, errors::WalletError};
-use bitcoin::{secp256k1::Secp256k1, Address, Amount, Block, FeeRate, Network, PrivateKey, Psbt, PublicKey, ScriptBuf, Transaction, Txid, XOnlyPublicKey};
+use bitcoin::{Address, Amount, Block, FeeRate, Network, PrivateKey, Psbt, PublicKey, ScriptBuf, Transaction, Txid, XOnlyPublicKey};
 
 use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
 use protocol_builder::scripts::{self, ProtocolScript};
+use key_manager::{key_manager::KeyManager};
 use tracing::{debug, error, info};
 
 use bdk_wallet::{coin_selection::DefaultCoinSelectionAlgorithm, rusqlite::Connection, Balance, KeychainKind, LocalOutput, PersistedWallet, SignOptions, TxBuilder, TxOrdering, Wallet as BdkWallet, WalletTx};
 use ctrlc;
 use bdk_bitcoind_rpc::{Emitter, bitcoincore_rpc::{Auth, Client, RpcApi},};
-use std::{str::FromStr,sync::{mpsc::sync_channel, Arc}, thread::spawn, fs, path::Path};
+use std::{str::FromStr,sync::{mpsc::sync_channel, Arc}, thread::spawn, fs, path::Path, rc::Rc};
 
 #[derive(Debug)]
 enum Emission {
@@ -22,57 +23,81 @@ pub struct Wallet {
     pub network: bitcoin::Network,
     pub rpc_client: Arc<Client>,
     pub bdk_wallet: PersistedWallet<Connection>,
-    pub public_key: String,
+    pub public_key: PublicKey,
     pub start_height: u32,
     conn: Connection,
-}
-enum StoreKey {
-    CreateWalletIndex,
-    Wallet(String),
-    Funding(String, String),
-    PendingTransfer(String, String),
-}
-
-impl StoreKey {
-    pub fn get_key(&self) -> String {
-        let base = "wallet";
-        match self {
-            Self::Wallet(identifier) => format!("{base}/name/{identifier}"),
-            Self::Funding(identifier, funding_id) => {
-                format!("{base}/{identifier}/funding/{funding_id}")
-            }
-            Self::PendingTransfer(identifier, funding_id) => {
-                format!("{base}/{identifier}/transfers/{funding_id}")
-            }
-            Self::CreateWalletIndex => format!("{base}/index"),
-        }
-    }
+    key_manager: Rc<KeyManager>,
 }
 
 impl Wallet {
-    pub fn new(bitcoin_config: RpcConfig, wallet_config: WalletConfig) -> Result<Wallet, anyhow::Error> {
+    pub fn from_derive_keypair(bitcoin_config: RpcConfig, wallet_config: WalletConfig, index: u32, key_manager: Rc<KeyManager>) -> Result<Wallet, anyhow::Error> {
+        let public_key: PublicKey = key_manager.derive_keypair(index)?;
+        Ok(Self::new(bitcoin_config, wallet_config, key_manager, &public_key, None)?)
+    }
+
+    pub fn from_derive_with_change(bitcoin_config: RpcConfig, wallet_config: WalletConfig, index: u32, change_index: u32, key_manager: Rc<KeyManager>) -> Result<Wallet, anyhow::Error> {
+        let public_key: PublicKey = key_manager.derive_keypair(index)?;
+        let change_public_key: PublicKey = key_manager.derive_keypair(change_index)?;
+        Ok(Self::new(bitcoin_config, wallet_config, key_manager, &public_key, Some(&change_public_key))?)
+    }   
+
+    pub fn from_private_key(bitcoin_config: RpcConfig, wallet_config: WalletConfig, private_key: &str, key_manager: Rc<KeyManager>) -> Result<Wallet, anyhow::Error> {
+        let public_key = key_manager.import_private_key(private_key)?;
+        Ok(Self::new(bitcoin_config, wallet_config, key_manager, &public_key, None)?)
+    }
+
+    pub fn from_partial_keys(bitcoin_config: RpcConfig, wallet_config: WalletConfig, partial_private_keys: Vec<String>, key_manager: Rc<KeyManager>) -> Result<Wallet, anyhow::Error> {
+        if partial_private_keys.is_empty() {
+            error!("No partial private keys provided");
+            return Err(WalletError::InvalidPartialPrivateKeys.into());
+        }
+        let aggregated_public_key = if partial_private_keys.iter().all(|key| key.len() == 64) {
+            key_manager
+                .import_partial_secret_keys(partial_private_keys, bitcoin_config.network)?
+        } else if partial_private_keys.iter().all(|key| key.len() == 52) {
+            key_manager
+                .import_partial_private_keys(partial_private_keys, bitcoin_config.network)?
+        } else {
+            error!("Invalid partial private keys provided");
+            return Err(WalletError::InvalidPartialPrivateKeys.into());
+        };
+        Ok(Self::new(bitcoin_config, wallet_config, key_manager, &aggregated_public_key, None)?)
+    }
+
+
+    pub fn new(bitcoin_config: RpcConfig, wallet_config: WalletConfig, key_manager: Rc<KeyManager>, public_key: &PublicKey, change_public_key: Option<&PublicKey>) -> Result<Wallet, anyhow::Error> {
         // Create a Bitcoin RPC client
         let rpc_client = Arc::new(Client::new(&bitcoin_config.url, Auth::UserPass(bitcoin_config.username.clone(), bitcoin_config.password.clone()))?);
         let start_height = wallet_config.start_height.unwrap_or(0);
         // Wallet config
-        let public_key = Self::private_key_to_public_key(&wallet_config.funding_key)?;
-        let db_path = wallet_config.db_path.clone().unwrap_or_else(|| Self::db_path(public_key.to_string()));
-        
+        let db_path = wallet_config.db_path.clone();
         // Ensure the directory exists
         Self::ensure_db_directory(&db_path)?;
         // Open or create a new sqlite database.
         let mut conn = Connection::open(db_path)?;
 
+        // Export the private key from the key managerxs
+        let private_key = key_manager.export_secret(&public_key)?;
+        // This descriptor for the wallet, wpkh indicates native segwit private key
+        // See https://docs.rs/bdk_wallet/2.0.0/bdk_wallet/macro.descriptor.html
+        // and https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md#examples
+        let descriptor = format!("wpkh({})", private_key.to_string());
+        let change_descriptor = match change_public_key {
+            Some(change_public_key) => Some(format!("wpkh({})", key_manager.export_secret(change_public_key)?.to_string())),
+            None => None,
+        };
+
         // Get or create a wallet with initial data read from rusqlite database.
-        let bdk_wallet = Self::load_bdk_wallet(&mut conn, bitcoin_config.network, &wallet_config)?;
+        let bdk_wallet = Self::load_bdk_wallet(&mut conn, bitcoin_config.network, &descriptor, change_descriptor)?;
 
         Ok(Self {
             network: bitcoin_config.network,
             rpc_client,
             bdk_wallet,
-            public_key: public_key.to_string(),
+            public_key: public_key.clone(),
             start_height,
             conn,
+            key_manager,
         })
     }
 
@@ -106,6 +131,8 @@ impl Wallet {
         // Sign the transaction
         let finalized = self.bdk_wallet.sign(&mut psbt, SignOptions::default())?;
         assert!(finalized, "we should have signed all the inputs");
+        // Persist the wallet to the database to avoid change address reuse
+        self.persist_wallet()?;
         // Get the transaction from the psbt
         let tx = psbt.extract_tx().expect("tx");
         Ok(tx)
@@ -249,43 +276,6 @@ impl Wallet {
         Ok(())
     }
 
-    // pub fn import_partial_private_keys(
-    //     &self,
-    //     identifier: &str,
-    //     partial_keys: Vec<String>,
-    //     network: bitcoin::Network,
-    // ) -> Result<(), WalletError> {
-    //     if partial_keys.is_empty() {
-    //         error!("No partial private keys provided");
-    //         return Err(WalletError::InvalidPartialPrivateKeys);
-    //     }
-
-    //     let aggregated_public_key = if partial_keys.iter().all(|key| key.len() == 64) {
-    //         self.key_manager
-    //             .import_partial_secret_keys(partial_keys, network)?
-    //     } else if partial_keys.iter().all(|key| key.len() == 52) {
-    //         self.key_manager
-    //             .import_partial_private_keys(partial_keys, network)?
-    //     } else {
-    //         error!("Invalid partial private keys provided");
-    //         return Err(WalletError::InvalidPartialPrivateKeys);
-    //     };
-
-    //     let key = StoreKey::Wallet(identifier.to_string()).get_key();
-
-    //     if self.store.has_key(&key)? {
-    //         return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
-    //     }
-
-    //     self.store.set(key, aggregated_public_key, None)?;
-
-    //     Ok(())
-    // }
-
-    fn db_path(public_key: String) -> String {
-        format!("/tmp/regtest/wallet/{public_key}.db")
-    }
-
     fn ensure_db_directory(db_path: &str) -> Result<(), anyhow::Error> {
         let path = Path::new(db_path);
         if let Some(parent) = path.parent() {
@@ -302,24 +292,27 @@ impl Wallet {
     /// Get or create a wallet with initial data read from rusqlite database.
     /// We use a single descriptor for the wallet, so we don't need to specify the change descriptor.
     /// see https://docs.rs/bdk_wallet/2.0.0/bdk_wallet/struct.Wallet.html#method.create_single
-    fn load_bdk_wallet(conn: &mut Connection, network: Network, wallet_config: &WalletConfig) -> Result<PersistedWallet<Connection>, anyhow::Error> {
-        let private_key = wallet_config.funding_key.clone();
-
-        // This descriptor for the wallet indicates native segwit (wpkh) public key for regtest network
-        // See https://docs.rs/bdk_wallet/2.0.0/bdk_wallet/macro.descriptor.html
-        // and https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md#examples
-        let descriptor = format!("wpkh({})", private_key).to_string();
+    fn load_bdk_wallet(conn: &mut Connection, network: Network, descriptor: &str, change_descriptor: Option<String>) -> Result<PersistedWallet<Connection>, anyhow::Error> {
         
         // Load the wallet from the database
-        let wallet_opt = BdkWallet::load()
-            .descriptor(KeychainKind::External, Some(descriptor.to_string()))
+        let mut load_params = BdkWallet::load()
+            .descriptor(KeychainKind::External, Some(descriptor.to_string()));
+        if let Some(chd) = change_descriptor.clone() {
+            load_params = load_params.descriptor(KeychainKind::Internal, Some(chd.to_string()));
+        }
+        let wallet_opt = load_params
             .check_network(network)
             .extract_keys()
             .load_wallet(conn)?;
 
+        if wallet_opt.is_some() {
+            return Ok(wallet_opt.unwrap());
+        }
         // If the wallet is not found, create a new one
-        let wallet = match wallet_opt {
-            Some(wallet) => wallet,
+        let wallet = match change_descriptor {
+            Some(chd) => BdkWallet::create(descriptor.to_string(), chd.to_string())
+                .network(network)
+                .create_wallet( conn)?,
             None => BdkWallet::create_single(descriptor.to_string())
                 .network(network)
                 .create_wallet( conn)?,
@@ -328,11 +321,6 @@ impl Wallet {
         Ok(wallet)
     }
 
-    fn private_key_to_public_key(private_key: &String) -> Result<String, anyhow::Error> {
-        let priv_key = PrivateKey::from_str(private_key)?;
-        let public_key = priv_key.public_key(&Secp256k1::new());
-        Ok(public_key.to_string())
-    }
 }
 
 /// Extension trait for regtest-specific wallet functions
@@ -341,13 +329,18 @@ pub trait RegtestWallet {
     /// Check if the wallet is in regtest mode
     fn check_network(&self) -> Result<(), anyhow::Error>;
 
+    /// Export the wallet
+    fn export_wallet(&self) -> Result<(PublicKey, PrivateKey), WalletError>;
+
     /// Generate blocks and send the coinbase reward to a specific address
+    /// Returns the coinbase transactions
     /// This function is only available in regtest mode
-    fn mine_to_address(&self, num_blocks: u64, address: &str) -> Result<Vec<Txid>, anyhow::Error>;
+    fn mine_to_address(&self, num_blocks: u64, address: &str) -> Result<Vec<Transaction>, anyhow::Error>;
     
     /// Generate a specified number of blocks to a default address
+    /// Returns the coinbase transactions
     /// This function is only available in regtest mode
-    fn mine(&self, num_blocks: u64) -> Result<Vec<Txid>, anyhow::Error>;
+    fn mine(&self, num_blocks: u64) -> Result<Vec<Transaction>, anyhow::Error>;
 
     /// Fund the wallet with 150 BTC
     /// This function is only available in regtest mode
@@ -381,29 +374,35 @@ impl RegtestWallet for Wallet {
         Ok(())
     }
 
+    fn export_wallet(&self) -> Result<(PublicKey, PrivateKey), WalletError> {
+        let private_key = self.key_manager.export_secret(&self.public_key)?;
+        Ok((self.public_key, private_key))
+    }
+
+
     /// Generate blocks and send the coinbase reward to a specific address
     /// This function is only available in regtest mode
-    fn mine_to_address(&self, num_blocks: u64, address: &str) -> Result<Vec<Txid>, anyhow::Error> {
+    fn mine_to_address(&self, num_blocks: u64, address: &str) -> Result<Vec<Transaction>, anyhow::Error> {
         self.check_network()?;
 
         let address = Address::from_str(address)?.require_network(self.network)?;
         let block_hashes = self.rpc_client.generate_to_address(num_blocks, &address)?;
         
-        // Convert block hashes to transaction IDs (coinbase transactions)
-        let mut coinbase_txids = Vec::new();
+        // Convert block hashes to coinbase transactions
+        let mut coinbase_txs = Vec::new();
         for block_hash in block_hashes {
             let block = self.rpc_client.get_block(&block_hash)?;
             if let Some(coinbase_tx) = block.txdata.first() {
-                coinbase_txids.push(coinbase_tx.compute_txid());
+                coinbase_txs.push(coinbase_tx.clone());
             }
         }
         
-        Ok(coinbase_txids)
+        Ok(coinbase_txs)
     }
 
     /// Generate a specified number of blocks to a default address
     /// This function is only available in regtest mode
-    fn mine(&self, num_blocks: u64) -> Result<Vec<Txid>, anyhow::Error> {
+    fn mine(&self, num_blocks: u64) -> Result<Vec<Transaction>, anyhow::Error> {
         self.check_network()?;
         // Use a different address for mining to avoid conflicts with the receive address
         let address = "mkHS9ne12qx9pS9VojpwU5xtRd4T7X7ZUt";
@@ -457,9 +456,8 @@ impl RegtestWallet for Wallet {
 
     /// Clear the database
     fn clear_db(wallet_config: &WalletConfig) -> Result<(), anyhow::Error> {
-        let public_key = Self::private_key_to_public_key(&wallet_config.funding_key)?;
-        let db_path = wallet_config.db_path.clone().unwrap_or_else(|| Self::db_path(public_key.to_string()));
-        let _ = std::fs::remove_file(db_path);
+        let db_path = wallet_config.db_path.clone();
+        let _ = std::fs::remove_file(db_path); 
 
         Ok(())
     }

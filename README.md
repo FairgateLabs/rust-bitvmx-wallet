@@ -93,16 +93,14 @@ docker exec -it bitvmx-node-1 bitcoin-cli -regtest -rpcuser=foo -rpcpassword=rpc
 cargo run -- create-wallet alice
 
 # 3. Fund the wallet in regtest mode (helper)
-cargo run -- regtest-fund alice fund1 100000
+cargo run -- regtest-fund alice
 
 # 4. List funds
 cargo run -- list-funds alice
 
-# 5. Send funds to another public key
-cargo run -- fund-address alice fund1 <pubkey> 50000 1000
+# 5. Send funds to another address
+cargo run -- send-and-mine alice bcrt1qs758ursh4q9z627kt3pp5yysm78ddny6txaqgw  1000
 
-# 6. Mine blocks to confirm
-cargo run -- mine 1
 ```
 
 ## Configuration

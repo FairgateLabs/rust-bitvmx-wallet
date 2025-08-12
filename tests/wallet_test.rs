@@ -71,8 +71,9 @@ fn test_bdk_wallet() -> Result<(), anyhow::Error> {
     let mut wallet = Wallet::from_private_key(
         config.bitcoin.clone(),
         config.wallet.clone(),
-        private_key,
         key_manager.clone(),
+        private_key,
+        None,
     )?;
 
     // Get a new address to receive bitcoin.
@@ -153,8 +154,9 @@ fn test_bdk_wallet_load_different_wallet_same_db() -> Result<(), anyhow::Error> 
     let mut wallet = Wallet::from_private_key(
         config.bitcoin.clone(),
         config.wallet.clone(),
-        original_private_key,
         key_manager.clone(),
+        original_private_key,
+        None,
     )?;
     let original_receive_address = wallet.receive_address()?;
     wallet.mine_to_address(6, &original_receive_address.to_string())?;
@@ -168,8 +170,9 @@ fn test_bdk_wallet_load_different_wallet_same_db() -> Result<(), anyhow::Error> 
     let result = Wallet::from_private_key(
         config.bitcoin.clone(),
         config.wallet.clone(),
-        private_key,
         key_manager.clone(),
+        private_key,
+        None,
     );
     assert!(
         result.is_err(),
@@ -189,8 +192,9 @@ fn test_bdk_wallet_load_different_wallet_same_db() -> Result<(), anyhow::Error> 
     wallet = Wallet::from_private_key(
         config.bitcoin.clone(),
         config.wallet.clone(),
-        private_key,
         key_manager.clone(),
+        private_key,
+        None,
     )?;
     let receive_address = wallet.receive_address()?;
     wallet.sync_wallet()?;
@@ -223,8 +227,9 @@ fn test_bdk_wallet_load_different_wallet_same_db() -> Result<(), anyhow::Error> 
     let mut wallet = Wallet::from_private_key(
         config.bitcoin.clone(),
         config.wallet.clone(),
-        original_private_key,
         key_manager.clone(),
+        original_private_key,
+        None,
     )?;
     wallet.sync_wallet()?;
     let balance = wallet.balance();
@@ -261,8 +266,9 @@ fn test_bdk_wallet_balance() -> Result<(), anyhow::Error> {
     let mut wallet = Wallet::from_private_key(
         config.bitcoin.clone(),
         config.wallet.clone(),
-        private_key,
         key_manager.clone(),
+        private_key,
+        None,
     )?;
 
     // Get a new address to receive bitcoin.
@@ -519,6 +525,126 @@ fn test_bdk_wallet_balance() -> Result<(), anyhow::Error> {
 
 #[test]
 #[ignore]
+fn test_bdk_wallet_balance_with_change_address() -> Result<(), anyhow::Error> {
+    let config = clean_and_load_config("config/regtest.yaml")?;
+    let storage = Rc::new(Storage::new(&config.storage)?);
+    let key_store = KeyStore::new(storage.clone());
+    let key_manager = Rc::new(create_key_manager_from_config(
+        &config.key_manager,
+        key_store,
+        storage.clone(),
+    )?);
+
+    let bitcoind = Bitcoind::new(
+        "bitcoin-regtest",
+        "ruimarinho/bitcoin-core",
+        config.bitcoin.clone(),
+    );
+    bitcoind.start()?;
+
+    let private_key = "cVt4o7BGAig1UXywgGSmARhxMdzP5qvQsxKkSsc1XEkw3tDTQFpy";
+    let change_private_key = "cQYmfCC4iDtw5V23QLnbUq5zHbSeXZBKMbPd6T5GMJq8fdLy28Jb";
+    let mut wallet = Wallet::from_private_key(
+        config.bitcoin.clone(),
+        config.wallet.clone(),
+        key_manager.clone(),
+        private_key,
+        Some(change_private_key),
+    )?;
+
+    // Get a new address to receive bitcoin.
+    let receive_address = wallet.receive_address()?;
+
+    // Send 300 BTC to the wallet using the RegtestWallet trait
+    let num_blocks = 6;
+    wallet.mine_to_address(num_blocks, &receive_address.to_string())?;
+    wallet.sync_wallet()?;
+    let balance = wallet.balance();
+    assert_eq!(
+        balance.total(),
+        Amount::from_int_btc(COINBASE_AMOUNT * num_blocks),
+        "Total balance shows unconfirmed and immature balance"
+    );
+
+    // Mine 100 blocks to ensure the coinbase output is mature
+    wallet.mine(100)?;
+    // Sync the wallet with the Bitcoin node to the latest block and mempool
+    wallet.sync_wallet()?;
+
+    let new_balance = wallet.balance();
+    assert_eq!(
+        new_balance.trusted_spendable(),
+        balance.trusted_spendable() + Amount::from_int_btc(COINBASE_AMOUNT * num_blocks),
+        "Trusted spendable balance should have increased by the coinbase amount after syncing the wallet"
+    );
+
+    // ====== Balance after send to address and receive change ======
+
+    let balance = new_balance;
+    let amount_to_send = Amount::from_int_btc(1);
+    let send_to_address = "bcrt1qs758ursh4q9z627kt3pp5yysm78ddny6txaqgw";
+    wallet.send_to_address(send_to_address, amount_to_send.to_sat(), None)?;
+    let new_balance = wallet.balance();
+    assert_eq!(
+        new_balance.total(),
+        balance.total() - amount_to_send - Amount::from_sat(P2WPKH_FEE_RATE),
+        "Total balance should have decreased by the fee rate after syncing the wallet"
+    );
+    assert_eq!(
+        new_balance.trusted_spendable(),
+        balance.trusted_spendable() - amount_to_send - Amount::from_sat(P2WPKH_FEE_RATE),
+        "Trusted spendable balance should have decreased by the fee rate after syncing the wallet"
+    );
+    assert_eq!(
+        new_balance.confirmed,
+        Amount::from_int_btc(300) - Amount::from_int_btc(COINBASE_AMOUNT),
+        "Confirmed balance should be 250 BTC as it blocks the whole utxo from the coinbase"
+    );
+    assert_eq!(
+        new_balance.immature,
+        Amount::from_int_btc(0),
+        "Immature balance should be 0 BTC"
+    );
+    // Trusted pending balance correspond to the unconfirmed tx to the change address, as we are using a receive address is 0
+    assert_eq!(
+        new_balance.trusted_pending,
+        Amount::from_int_btc(COINBASE_AMOUNT) - amount_to_send - Amount::from_sat(P2WPKH_FEE_RATE),
+        "Trusted pending balance should be the change (50 BTC from coinbase utxo - amount sent - fee rate)"
+    );
+    assert_eq!(
+        new_balance.untrusted_pending,
+        Amount::from_int_btc(0),
+        "Unconfirmed balance should be 0 BTC"
+    );
+
+    let balance = new_balance;
+    // Mine 1 block to confirm the transaction
+    wallet.mine(1)?;
+    // Sync the wallet with the Bitcoin node to the latest block and mempool
+    wallet.sync_wallet()?;
+    let new_balance = wallet.balance();
+    assert_eq!(
+        new_balance.total(),
+        balance.total(),
+        "Total balance should be the same after syncing the wallet"
+    );
+    assert_eq!(
+        new_balance.trusted_spendable(),
+        balance.trusted_spendable(),
+        "Trusted spendable balance should be the same after syncing the wallet"
+    );
+    assert_eq!(
+        new_balance.confirmed,
+        Amount::from_int_btc(300) - amount_to_send - Amount::from_sat(P2WPKH_FEE_RATE),
+        "Confirmed balance should be 300 BTC - amount sent - fee rate"
+    );
+
+    bitcoind.stop()?;
+    Ok(())
+}
+
+#[test]
+#[ignore]
 fn test_bdk_wallet_build_tx() -> Result<(), anyhow::Error> {
     // Arrenge
     let config = clean_and_load_config("config/regtest.yaml")?;
@@ -541,8 +667,9 @@ fn test_bdk_wallet_build_tx() -> Result<(), anyhow::Error> {
     let mut wallet = Wallet::from_private_key(
         config.bitcoin.clone(),
         config.wallet.clone(),
-        private_key,
         key_manager.clone(),
+        private_key,
+        None,
     )?;
 
     // Get a new address to receive bitcoin.
@@ -640,8 +767,9 @@ fn test_regtest_wallet() -> Result<(), anyhow::Error> {
     let mut wallet = Wallet::from_private_key(
         config.bitcoin.clone(),
         config.wallet.clone(),
-        private_key,
         key_manager.clone(),
+        private_key,
+        None,
     )?;
 
     // Mine 101 blocks to the receive address to ensure only one coinbase output is mature

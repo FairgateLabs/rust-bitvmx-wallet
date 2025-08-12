@@ -73,17 +73,12 @@ fn test_unrecognized_subcommand() -> Result<(), anyhow::Error> {
 }
 
 #[test]
+#[ignore]
 fn test_create_wallet() -> Result<(), anyhow::Error> {
     config_trace();
     let config = load_config("config/regtest.yaml")?;
 
-    // // Clear all wallets, wallet db, storage and key manager
-    // let mut cmd = Command::cargo_bin(PROJECT_NAME)?;
-    // cmd.arg("clear-all-wallets");
-    // cmd.assert()
-    //     .success()
-    //     .stdout(predicate::str::contains("Cleared all wallets"));
-
+    // Clear all wallets, wallet db, storage and key manager
     clear_db("/tmp/wallet_manager".as_ref())?;
     clear_db(&config.storage.path)?;
     clear_db(&config.key_storage.path)?;
@@ -125,6 +120,38 @@ fn test_create_wallet() -> Result<(), anyhow::Error> {
         .success()
         .stdout(predicate::str::contains(format!("Wallet: test-wallet")))
         .stdout(predicate::str::contains("- Balance: { immature: 0 BTC, trusted_pending: 0 BTC, untrusted_pending: 0 BTC, confirmed: 0 BTC }"));
+
+    let mut cmd = Command::cargo_bin(PROJECT_NAME)?;
+    cmd.arg("regtest-fund");
+    cmd.arg("test-wallet");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains(format!("Wallet test-wallet funded with 150 BTC")));
+
+    let mut cmd = Command::cargo_bin(PROJECT_NAME)?;
+    cmd.arg("wallet-info");
+    cmd.arg("test-wallet");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains(format!("Wallet: test-wallet")))
+        .stdout(predicate::str::contains("- Balance: { immature: 0 BTC, trusted_pending: 0 BTC, untrusted_pending: 0 BTC, confirmed: 150 BTC }"));
+    
+    let mut cmd = Command::cargo_bin(PROJECT_NAME)?;
+    cmd.arg("send-and-mine");
+    cmd.arg("test-wallet");
+    cmd.arg("bcrt1qs758ursh4q9z627kt3pp5yysm78ddny6txaqgw");
+    cmd.arg("100000000");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains(format!("Funded address bcrt1qs758ursh4q9z627kt3pp5yysm78ddny6txaqgw with amount 100000000 satoshis and mined 1 block")));
+    
+    let mut cmd = Command::cargo_bin(PROJECT_NAME)?;
+    cmd.arg("wallet-info");
+    cmd.arg("test-wallet");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains(format!("Wallet: test-wallet")))
+        .stdout(predicate::str::contains("- Balance: { immature: 0 BTC, trusted_pending: 0 BTC, untrusted_pending: 0 BTC, confirmed: 148.99999859 BTC }"));
 
     bitcoind.stop()?;
     Ok(())

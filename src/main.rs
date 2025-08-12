@@ -63,7 +63,7 @@ fn main() {
                 }
             }
             match wallet.send_to_address(to_address, *amount, *fee_rate) {
-                Ok(tx) => println!("Funded address, txid: {}", tx.compute_txid()),
+                Ok(tx) => println!("Sent to address, txid: {}", tx.compute_txid()),
                 Err(e) => eprintln!(
                     "Error sending to address {to_address} with amount {amount} satoshis: {e}"
                 ),
@@ -149,14 +149,14 @@ fn main() {
                 Err(e) => eprintln!("Error mining {num_blocks} blocks: {e}"),
             }
         }
-        Commands::RegtestFundWallet { identifier } => {
+        Commands::RegtestFund { identifier } => {
             let mut wallet = wallet_manager.load_wallet(identifier).unwrap();
             match wallet.fund() {
-                Ok(_) => println!("Wallet funded with 150 BTC"),
+                Ok(_) => println!("Wallet {identifier} funded with 150 BTC"),
                 Err(e) => eprintln!("Error funding wallet: {e}"),
             }
         }
-        Commands::SendToAddressAndMine {
+        Commands::SendAndMine {
             identifier,
             to_address,
             amount,
@@ -168,9 +168,9 @@ fn main() {
                     eprintln!("Error syncing wallet: {e}");
                     process::exit(1);
                 }
-            }
+            };
             match wallet.fund_address(to_address, *amount) {
-                Ok(_) => println!("Funded address and mined 1 block"),
+                Ok(_) => println!("Funded address {to_address} with amount {amount} satoshis and mined 1 block"),
                 Err(e) => eprintln!(
                     "Error funding address {to_address} with amount {amount} satoshis: {e}"
                 ),

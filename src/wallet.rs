@@ -111,19 +111,26 @@ impl Wallet {
     pub fn from_private_key(
         bitcoin_config: RpcConfig,
         wallet_config: WalletConfig,
-        private_key: &str,
         key_manager: Rc<KeyManager>,
+        private_key: &str,
+        change_private_key: Option<&str>,
     ) -> Result<Wallet, anyhow::Error> {
         let public_key = key_manager.import_private_key(private_key)?;
         let descriptor = Self::p2wpkh_descriptor(&key_manager, &public_key)?;
-        let change_descriptor = None;
+        let change_descriptor = match change_private_key {
+            Some(change_private_key) => {
+                let change_public_key = key_manager.import_private_key(change_private_key)?;
+                Some(Self::p2wpkh_descriptor(&key_manager, &change_public_key)?)
+            }
+            None => None,
+        };
         Self::new(
             bitcoin_config,
             wallet_config,
             key_manager,
             &public_key,
             &descriptor,
-            change_descriptor,
+            change_descriptor.as_deref(),
         )
     }
 

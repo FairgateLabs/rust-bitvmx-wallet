@@ -30,9 +30,9 @@ pub enum Commands {
     /// Mine blocks (regtest only)
     Mine { num_blocks: u64 },
     /// Regtest fund the wallet with 150 BTC
-    RegtestFundWallet { identifier: String },
+    RegtestFund { identifier: String },
     /// Send funds to an address and mine 1 block
-    SendToAddressAndMine {
+    SendAndMine {
         identifier: String,
         to_address: String,
         amount: u64,

@@ -129,6 +129,10 @@ key_storage:
 
 storage:
   path: /tmp/regtest/wallet/storage.db
+
+wallet:
+  db_path: /tmp/regtest/wallet/wallet.db
+  start_height: 0
 ```
 
 ## Key Management Notes

@@ -10,17 +10,13 @@ pub struct WalletConfig {
 }
 
 impl WalletConfig {
-    pub fn new(
-        db_path: String,
-        start_height: Option<u32>,
-    ) -> Result<WalletConfig, anyhow::Error> {
+    pub fn new(db_path: String, start_height: Option<u32>) -> Result<WalletConfig, anyhow::Error> {
         Ok(WalletConfig {
             db_path,
             start_height,
         })
     }
 }
-
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Config {

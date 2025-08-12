@@ -17,4 +17,4 @@ storage:
 
 wallet:
   db_path: /tmp/testnet/wallet/wallet.db
-  start_height: 4621763
+  start_height: 3878676

@@ -22,18 +22,15 @@ pub enum Commands {
         fee_rate: Option<u64>,
     },
     /// Sync the wallet with the Bitcoin node
-    SyncWallet {identifier: String},
+    SyncWallet { identifier: String },
     /// Cancel a transfer
-    CancelTx {
-        identifier: String,
-        txid: String,
-    },
+    CancelTx { identifier: String, txid: String },
     /// List unspent outputs
-    ListUnspent {identifier: String},
+    ListUnspent { identifier: String },
     /// Mine blocks (regtest only)
     Mine { num_blocks: u64 },
     /// Regtest fund the wallet with 150 BTC
-    RegtestFundWallet {identifier: String},
+    RegtestFundWallet { identifier: String },
     /// Send funds to an address and mine 1 block
     SendToAddressAndMine {
         identifier: String,
@@ -45,14 +42,11 @@ pub enum Commands {
     /// List wallets
     ListWallets,
     /// Get wallet info
-    WalletInfo {identifier: String},
+    WalletInfo { identifier: String },
     /// Create a new secret key
     CreateWallet { identifier: String },
     /// Import a derived keypair
-    ImportDeriveKeypair {
-        identifier: String,
-        index: u32,
-    },
+    ImportDeriveKeypair { identifier: String, index: u32 },
     /// Import a secret key
     ImportKey {
         identifier: String,
@@ -65,9 +59,9 @@ pub enum Commands {
         partial_private_keys: Vec<String>,
     },
     /// Export a wallet
-    ExportWallet {identifier: String},
+    ExportWallet { identifier: String },
     /// Clear a wallet
-    ClearWallet {identifier: String},
+    ClearWallet { identifier: String },
     /// Clear all wallets
     ClearAllWallets,
 }

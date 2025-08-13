@@ -11,8 +11,7 @@ use protocol_builder::scripts::{self, ProtocolScript};
 use tracing::{debug, error, info};
 
 use bdk_bitcoind_rpc::{
-    bitcoincore_rpc::{Auth, Client, RpcApi},
-    Emitter,
+    bitcoincore_rpc::{Auth, Client, RpcApi}, BlockEvent, Emitter, MempoolEvent
 };
 use bdk_wallet::{
     coin_selection::DefaultCoinSelectionAlgorithm, rusqlite::Connection,
@@ -27,11 +26,11 @@ use std::{
     rc::Rc,
     str::FromStr,
     sync::{mpsc::sync_channel, Arc},
-    thread::spawn,
+    thread::spawn, time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 #[derive(Debug)]
-enum Emission {
+pub enum Emission {
     SigTerm,
     Block(bdk_bitcoind_rpc::BlockEvent<Block>),
     Mempool(bdk_bitcoind_rpc::MempoolEvent),
@@ -44,6 +43,7 @@ pub struct Wallet {
     pub public_key: PublicKey,
     pub name: String,
     pub start_height: u32,
+    pub is_ready: bool,
     conn: Connection,
     key_manager: Rc<KeyManager>,
 }
@@ -55,14 +55,14 @@ impl Display for Wallet {
 }
 
 impl Wallet {
-    /// Create a wallet from key manager
+    /// Create a wallet from a public key used to get the private key from the key manager
     pub fn from_key_manager(
         bitcoin_config: RpcConfig,
         wallet_config: WalletConfig,
         key_manager: Rc<KeyManager>,
         public_key: &PublicKey,
         change_public_key: Option<&PublicKey>,
-    ) -> Result<Wallet, anyhow::Error> {
+    ) -> Result<Wallet, WalletError> {
         let descriptor = Self::p2wpkh_descriptor(&key_manager, public_key)?;
         let change_descriptor = match change_public_key {
             Some(change_public_key) => {
@@ -80,14 +80,14 @@ impl Wallet {
         )
     }
 
-    /// Create a wallet from a derive keypair
+    /// Create a wallet from an index to derive the key pair from the key manager
     pub fn from_derive_keypair(
         bitcoin_config: RpcConfig,
         wallet_config: WalletConfig,
         key_manager: Rc<KeyManager>,
         index: u32,
         change_index: Option<u32>,
-    ) -> Result<Wallet, anyhow::Error> {
+    ) -> Result<Wallet, WalletError> {
         let public_key = key_manager.derive_keypair(index)?;
         let descriptor = Self::p2wpkh_descriptor(&key_manager, &public_key)?;
         let change_descriptor = match change_index {
@@ -107,14 +107,14 @@ impl Wallet {
         )
     }
 
-    /// Create a wallet from a private key
+    /// Create a wallet from a private key, stores it in the key manager
     pub fn from_private_key(
         bitcoin_config: RpcConfig,
         wallet_config: WalletConfig,
         key_manager: Rc<KeyManager>,
         private_key: &str,
         change_private_key: Option<&str>,
-    ) -> Result<Wallet, anyhow::Error> {
+    ) -> Result<Wallet, WalletError> {
         let public_key = key_manager.import_private_key(private_key)?;
         let descriptor = Self::p2wpkh_descriptor(&key_manager, &public_key)?;
         let change_descriptor = match change_private_key {
@@ -138,7 +138,7 @@ impl Wallet {
     fn p2wpkh_descriptor(
         key_manager: &Rc<KeyManager>,
         public_key: &PublicKey,
-    ) -> Result<String, anyhow::Error> {
+    ) -> Result<String, WalletError> {
         // Export the private key from the key manager
         let private_key = key_manager.export_secret(public_key)?;
         // This descriptor for the wallet, wpkh indicates native segwit private key
@@ -153,7 +153,7 @@ impl Wallet {
         wallet_config: WalletConfig,
         partial_private_keys: Vec<String>,
         key_manager: Rc<KeyManager>,
-    ) -> Result<Wallet, anyhow::Error> {
+    ) -> Result<Wallet, WalletError> {
         if partial_private_keys.is_empty() {
             error!("No partial private keys provided");
             return Err(WalletError::InvalidPartialPrivateKeys.into());
@@ -182,7 +182,7 @@ impl Wallet {
     fn p2tr_descriptor(
         key_manager: &Rc<KeyManager>,
         public_key: &PublicKey,
-    ) -> Result<String, anyhow::Error> {
+    ) -> Result<String, WalletError> {
         // Export the private key from the key manager
         let private_key = key_manager.export_secret(public_key)?;
         // P2TR output with the specified key as internal key, and optionally a tree of script paths.
@@ -200,7 +200,7 @@ impl Wallet {
         public_key: &PublicKey,
         descriptor: &str,
         change_descriptor: Option<&str>
-    ) -> Result<Wallet, anyhow::Error> {
+    ) -> Result<Wallet, WalletError> {
         // Create a Bitcoin RPC client
         let rpc_client = Arc::new(Client::new(
             &bitcoin_config.url,
@@ -239,6 +239,7 @@ impl Wallet {
             name,
             public_key: *public_key,
             start_height,
+            is_ready: false,
             conn,
             key_manager,
         })
@@ -251,7 +252,7 @@ impl Wallet {
         network: Network,
         descriptor: &str,
         change_descriptor: Option<&str>,
-    ) -> Result<PersistedWallet<Connection>, anyhow::Error> {
+    ) -> Result<PersistedWallet<Connection>, WalletError> {
         // Load the wallet from the database
         let mut load_params =
             BdkWallet::load().descriptor(KeychainKind::External, Some(descriptor.to_string()));
@@ -287,7 +288,7 @@ impl Wallet {
         self.bdk_wallet.balance()
     }
 
-    pub fn receive_address(&mut self) -> Result<Address, anyhow::Error> {
+    pub fn receive_address(&mut self) -> Result<Address, WalletError> {
         let address_info = self.bdk_wallet.reveal_next_address(KeychainKind::External);
         // Mark previous address as used for receiving and persist to sqlite database.
         self.persist_wallet()?;
@@ -299,7 +300,7 @@ impl Wallet {
         to_address: &str,
         amount: u64,
         fee_rate: Option<u64>,
-    ) -> Result<Transaction, anyhow::Error> {
+    ) -> Result<Transaction, WalletError> {
         // convert to address
         let to_address = Address::from_str(to_address)?.require_network(self.network)?;
         // See https://docs.rs/bdk_wallet/latest/bdk_wallet/struct.TxBuilder.html
@@ -330,19 +331,17 @@ impl Wallet {
         to_address: &str,
         amount: u64,
         fee_rate: Option<u64>,
-    ) -> Result<Transaction, anyhow::Error> {
+    ) -> Result<Transaction, WalletError> {
         let tx = self.send_to_address_tx(to_address, amount, fee_rate)?;
-        // Broadcast the transaction
+        // Broadcast the transaction and update the wallet with the unconfirmed transaction
         self.send_transaction(&tx)?;
-        // Sync the wallet to update transactions in the mempool
-        self.sync_wallet()?;
         Ok(tx)
     }
 
     pub fn pub_key_to_p2wpk(
         public_key: &PublicKey,
         network: Network,
-    ) -> Result<Address, anyhow::Error> {
+    ) -> Result<Address, WalletError> {
         let script = ScriptBuf::new_p2wpkh(&public_key.wpubkey_hash()?);
         let address = Address::from_script(&script, network)?;
         Ok(address)
@@ -353,7 +352,7 @@ impl Wallet {
         public_key: &PublicKey,
         amount: u64,
         fee_rate: Option<u64>,
-    ) -> Result<Transaction, anyhow::Error> {
+    ) -> Result<Transaction, WalletError> {
         let address = Wallet::pub_key_to_p2wpk(public_key, self.network)?;
         let tx = self.send_to_address(&address.to_string(), amount, fee_rate)?;
         Ok(tx)
@@ -363,7 +362,7 @@ impl Wallet {
         &mut self,
         x_public_key: &XOnlyPublicKey,
         tap_leaves: &[ProtocolScript],
-    ) -> Result<Address, anyhow::Error> {
+    ) -> Result<Address, WalletError> {
         let tap_spend_info = scripts::build_taproot_spend_info(
             self.bdk_wallet.secp_ctx(),
             x_public_key,
@@ -380,28 +379,32 @@ impl Wallet {
         tap_leaves: &[ProtocolScript],
         amount: u64,
         fee_rate: Option<u64>,
-    ) -> Result<Transaction, anyhow::Error> {
+    ) -> Result<Transaction, WalletError> {
         let address = self.pub_key_to_p2tr(x_public_key, tap_leaves)?;
         let tx = self.send_to_address(&address.to_string(), amount, fee_rate)?;
         Ok(tx)
     }
 
-    pub fn send_transaction(&mut self, tx: &Transaction) -> Result<Txid, anyhow::Error> {
+    /// Send a transaction and update the wallet with the unconfirmed transaction
+    pub fn send_transaction(&mut self, tx: &Transaction) -> Result<Txid, WalletError> {
         let tx_hash = self.rpc_client.send_raw_transaction(tx)?;
+        // Sync the wallet to update transactions in the mempool
+        let last_seen_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+        self.bdk_wallet.apply_unconfirmed_txs(vec![(tx.clone(), last_seen_timestamp)]);
         Ok(tx_hash)
     }
 
-    pub fn get_wallet_tx(&self, txid: Txid) -> Result<Option<WalletTx>, anyhow::Error> {
+    pub fn get_wallet_tx(&self, txid: Txid) -> Result<Option<WalletTx>, WalletError> {
         let tx = self.bdk_wallet.get_tx(txid);
         Ok(tx)
     }
 
-    pub fn list_unspent(&self) -> Result<Vec<LocalOutput>, anyhow::Error> {
+    pub fn list_unspent(&self) -> Result<Vec<LocalOutput>, WalletError> {
         let unspent = self.bdk_wallet.list_unspent().collect::<Vec<_>>();
         Ok(unspent)
     }
 
-    pub fn cancel_tx(&mut self, tx: &Transaction) -> Result<(), anyhow::Error> {
+    pub fn cancel_tx(&mut self, tx: &Transaction) -> Result<(), WalletError> {
         self.bdk_wallet.cancel_tx(tx);
         Ok(())
     }
@@ -414,96 +417,129 @@ impl Wallet {
         &mut self,
         psbt: &mut Psbt,
         sign_options: SignOptions,
-    ) -> Result<bool, anyhow::Error> {
+    ) -> Result<bool, WalletError> {
         let finalized = self.bdk_wallet.sign(psbt, sign_options)?;
         Ok(finalized)
     }
 
-    pub fn sync_wallet(&mut self) -> Result<(), anyhow::Error> {
-        // Obtain latest checkpoint (last synced block height and hash)
-        let wallet_tip = self.bdk_wallet.latest_checkpoint();
-        debug!(
-            "Syncing wallet from latest checkpoint: {} at height {}",
-            wallet_tip.hash(),
-            wallet_tip.height()
-        );
+    pub fn tick(&mut self) -> Result<u64, WalletError> {
+        let mut blocks_received = 0_u64;
+        let mut emitter = self.create_emitter();
+        if let Some(emission) = emitter.next_block()? {
+            self.sync_block(emission)?;
+            blocks_received += 1;
+        } else {
+            self.sync_mempool(emitter.mempool()?)?;
+            self.is_ready = true;
+        }
+        Ok(blocks_received)
+   }
 
-        // Create a synchronous channel with two threads one to receive emissions from the emitter and the other to send emissions to the wallet
-        // Buffer Size of 21: This means the channel can hold up to 21 Emission messages in its buffer. If the buffer is full the emitter thread will block when trying to send new emissions
+    pub fn sync_block(&mut self, block_emission: BlockEvent<Block>) -> Result<(), WalletError> {
+        let height = block_emission.block_height();
+        let connected_to = block_emission.connected_to();
+        self.bdk_wallet.apply_block_connected_to(&block_emission.block, height, connected_to)?;
+        self.persist_wallet()?;
+        debug!("Applied block {} at height {}", block_emission.block_hash(), height);
+        Ok(())  
+    }
+
+    pub fn sync_mempool(&mut self, mempool_emission: MempoolEvent) -> Result<(), WalletError> {
+        self.bdk_wallet.apply_evicted_txs(mempool_emission.evicted);
+        self.bdk_wallet.apply_unconfirmed_txs(mempool_emission.update);
+        self.persist_wallet()?;
+        debug!("Applied evicted and unconfirmed transactions");
+        Ok(())  
+    }
+
+    pub fn sync_wallet(&mut self) -> Result<u64, WalletError> {
+        info!("Syncing wallet ...");
+        let start_sync = Instant::now();
+        let mut emitter = self.create_emitter();
+        let mut blocks_received = 0_u64;
+        while let Some(emission) = emitter.next_block()? {
+            blocks_received += 1;
+            self.sync_block(emission)?;
+        }
+        self.sync_mempool(emitter.mempool()?)?;
+        info!(
+            "Synced wallet: {} blocks and mempool in {}s",
+            blocks_received,
+            start_sync.elapsed().as_secs_f32(),
+        );
+        self.is_ready = true;
+        Ok(blocks_received)
+    }
+
+    pub fn sync_wallet_multi_thread(&mut self) -> Result<u64, WalletError> {
+        let start_sync = Instant::now();
+        info!("Syncing wallet with multi thread ...");
         let (sender, receiver) = sync_channel::<Emission>(21);
 
-        // Set up a signal handler to send a SigTerm (CTRL+C) emission when the process is terminated
         let signal_sender = sender.clone();
         let _ = ctrlc::set_handler(move || {
             signal_sender
                 .send(Emission::SigTerm)
-                .expect("failed to send sigterm")
+                .expect("Sync wallet error: failed to send SIGTERM")
         });
 
-        // Earliest block height to start sync from
-        let emitter_tip = wallet_tip.clone();
-        let expected_mempool_txid = self
-            .bdk_wallet
-            .transactions()
-            .filter(|tx| tx.chain_position.is_unconfirmed());
-        // Create a new emitter that will emit the blocks and the mempool to the wallet thread
-        let mut emitter = Emitter::new(
-            self.rpc_client.clone(),
-            emitter_tip,
-            self.start_height,
-            expected_mempool_txid,
-        );
-
-        // Start the emitter thread that connects with the Bitcoin node and receives the blocks and the mempool
-        spawn(move || -> Result<(), anyhow::Error> {
-            // Send blocks one by one to the wallet thread, starting from last checkpoint or start_height
+        let mut emitter = self.create_emitter();
+        let emitter_handle = spawn(move || -> Result<(), WalletError> {
             while let Some(emission) = emitter.next_block()? {
                 sender.send(Emission::Block(emission))?;
             }
-            // Send the mempool to the wallet thread
             sender.send(Emission::Mempool(emitter.mempool()?))?;
             Ok(())
         });
-
-        // Start the wallet thread that receives the blocks and the mempool from the emitter thread and applies them to the wallet
+ 
+        let mut blocks_received = 0_u64;
         for emission in receiver {
             match emission {
-                // If the process is terminated(CTRL+C), exit the loop
                 Emission::SigTerm => {
-                    info!("Sigterm received, exiting...");
+                    info!("SIGTERM received, exiting...");
                     break;
                 }
-                // If a block is received, apply it to the wallet
                 Emission::Block(block_emission) => {
-                    let height = block_emission.block_height();
-                    let hash = block_emission.block_hash();
-                    let connected_to = block_emission.connected_to();
-                    // Apply the block to the wallet
-                    self.bdk_wallet.apply_block_connected_to(
-                        &block_emission.block,
-                        height,
-                        connected_to,
-                    )?;
-                    // Persist the wallet to the database
-                    self.persist_wallet()?;
-                    debug!("Applied block {} at height {}", hash, height);
+                    blocks_received += 1;
+                    self.sync_block(block_emission)?;
                 }
-                Emission::Mempool(mempool_emission) => {
-                    // Apply the mempool to the wallet
-                    self.bdk_wallet
-                        .apply_evicted_txs(mempool_emission.evicted_ats());
-                    self.bdk_wallet
-                        .apply_unconfirmed_txs(mempool_emission.new_txs);
-                    // Persist the wallet to the database
-                    self.persist_wallet()?;
+                Emission::Mempool(event) => {
+                    self.sync_mempool(event)?;
                     break;
                 }
             }
         }
-        Ok(())
+        match emitter_handle.join() {
+            Ok(_) => {
+                info!(
+                    "Synced wallet with multi thread: {} blocks and mempool in {}s",
+                    blocks_received,
+                    start_sync.elapsed().as_secs_f32(),
+                );
+                self.is_ready = true;
+                Ok(blocks_received)
+            },
+            Err(e) => { 
+                Err(WalletError::ThreadPanicked(format!("Sync wallet error: Emitter thread panicked with: {:?}", e)))
+            }
+        }
     }
 
-    fn ensure_db_directory(db_path: &str) -> Result<(), anyhow::Error> {
+    fn create_emitter(&self) -> Emitter<Arc<Client>> {
+        // Obtain latest checkpoint (last synced block height and hash)
+        let wallet_tip = self.bdk_wallet.latest_checkpoint();
+        let wallet_unconfirmed_txs = self.bdk_wallet
+            .transactions()
+            .filter(|tx| tx.chain_position.is_unconfirmed());
+        Emitter::new(
+            self.rpc_client.clone(),
+            wallet_tip,
+            self.start_height,
+            wallet_unconfirmed_txs,
+        )
+    }
+
+    fn ensure_db_directory(db_path: &str) -> Result<(), WalletError> {
         let path = Path::new(db_path);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
@@ -511,7 +547,7 @@ impl Wallet {
         Ok(())
     }
 
-    fn persist_wallet(&mut self) -> Result<(), anyhow::Error> {
+    fn persist_wallet(&mut self) -> Result<(), WalletError> {
         self.bdk_wallet.persist(&mut self.conn)?;
         Ok(())
     }
@@ -521,7 +557,7 @@ impl Wallet {
 /// This trait provides utilities that are only available in regtest mode
 pub trait RegtestWallet {
     /// Check if the wallet is in regtest mode
-    fn check_network(&self) -> Result<(), anyhow::Error>;
+    fn check_network(&self) -> Result<(), WalletError>;
 
     /// Export the wallet
     fn export_wallet(&self) -> Result<(PublicKey, PrivateKey), WalletError>;
@@ -533,21 +569,21 @@ pub trait RegtestWallet {
         &self,
         num_blocks: u64,
         address: &str,
-    ) -> Result<Vec<Transaction>, anyhow::Error>;
+    ) -> Result<Vec<Transaction>, WalletError>;
 
     /// Generate a specified number of blocks to a default address
     /// Returns the coinbase transactions
     /// This function is only available in regtest mode
-    fn mine(&self, num_blocks: u64) -> Result<Vec<Transaction>, anyhow::Error>;
+    fn mine(&self, num_blocks: u64) -> Result<Vec<Transaction>, WalletError>;
 
     /// Fund the wallet with 150 BTC
     /// This function is only available in regtest mode
-    fn fund(&mut self) -> Result<(), anyhow::Error>;
+    fn fund(&mut self) -> Result<(), WalletError>;
 
     /// Send funds to a specific address and mines 1 block
     /// This function is only available in regtest mode
     fn fund_address(&mut self, to_address: &str, amount: u64)
-        -> Result<Transaction, anyhow::Error>;
+        -> Result<Transaction, WalletError>;
 
     /// Send funds to a specific p2wpkh public key and mines 1 block
     /// This function is only available in regtest mode
@@ -555,7 +591,7 @@ pub trait RegtestWallet {
         &mut self,
         public_key: &PublicKey,
         amount: u64,
-    ) -> Result<Transaction, anyhow::Error>;
+    ) -> Result<Transaction, WalletError>;
 
     /// Send funds to a specific p2tr public key and mines 1 block
     /// This function is only available in regtest mode
@@ -564,15 +600,15 @@ pub trait RegtestWallet {
         x_public_key: &XOnlyPublicKey,
         tap_leaves: &[ProtocolScript],
         amount: u64,
-    ) -> Result<Transaction, anyhow::Error>;
+    ) -> Result<Transaction, WalletError>;
 
     /// Clear the database
     /// This function is only available in regtest mode
-    fn clear_db(wallet_config: &WalletConfig) -> Result<(), anyhow::Error>;
+    fn clear_db(wallet_config: &WalletConfig) -> Result<(), WalletError>;
 }
 
 impl RegtestWallet for Wallet {
-    fn check_network(&self) -> Result<(), anyhow::Error> {
+    fn check_network(&self) -> Result<(), WalletError> {
         if self.network != Network::Regtest {
             use crate::errors::WalletError;
 
@@ -592,7 +628,7 @@ impl RegtestWallet for Wallet {
         &self,
         num_blocks: u64,
         address: &str,
-    ) -> Result<Vec<Transaction>, anyhow::Error> {
+    ) -> Result<Vec<Transaction>, WalletError> {
         self.check_network()?;
 
         let address = Address::from_str(address)?.require_network(self.network)?;
@@ -612,7 +648,7 @@ impl RegtestWallet for Wallet {
 
     /// Generate a specified number of blocks to a default address
     /// This function is only available in regtest mode
-    fn mine(&self, num_blocks: u64) -> Result<Vec<Transaction>, anyhow::Error> {
+    fn mine(&self, num_blocks: u64) -> Result<Vec<Transaction>, WalletError> {
         self.check_network()?;
         // Use a different address for mining to avoid conflicts with the receive address
         let address = "mkHS9ne12qx9pS9VojpwU5xtRd4T7X7ZUt";
@@ -621,7 +657,7 @@ impl RegtestWallet for Wallet {
 
     /// Fund the wallet with 150 BTC
     /// This function is only available in regtest mode
-    fn fund(&mut self) -> Result<(), anyhow::Error> {
+    fn fund(&mut self) -> Result<(), WalletError> {
         self.check_network()?;
 
         let address = self.receive_address()?;
@@ -641,7 +677,7 @@ impl RegtestWallet for Wallet {
         &mut self,
         to_address: &str,
         amount: u64,
-    ) -> Result<Transaction, anyhow::Error> {
+    ) -> Result<Transaction, WalletError> {
         self.check_network()?;
 
         // Mine 1 block to the receive address
@@ -660,7 +696,7 @@ impl RegtestWallet for Wallet {
         &mut self,
         public_key: &PublicKey,
         amount: u64,
-    ) -> Result<Transaction, anyhow::Error> {
+    ) -> Result<Transaction, WalletError> {
         let address = Wallet::pub_key_to_p2wpk(public_key, self.network)?;
         let tx = self.fund_address(&address.to_string(), amount)?;
         Ok(tx)
@@ -671,18 +707,19 @@ impl RegtestWallet for Wallet {
         x_public_key: &XOnlyPublicKey,
         tap_leaves: &[ProtocolScript],
         amount: u64,
-    ) -> Result<Transaction, anyhow::Error> {
+    ) -> Result<Transaction, WalletError> {
         let address = self.pub_key_to_p2tr(x_public_key, tap_leaves)?;
         let tx = self.fund_address(&address.to_string(), amount)?;
         Ok(tx)
     }
 
     /// Clear the database
-    fn clear_db(wallet_config: &WalletConfig) -> Result<(), anyhow::Error> {
+    /// This function is only available in regtest mode
+    fn clear_db(wallet_config: &WalletConfig) -> Result<(), WalletError> {
         let db_path = Path::new(&wallet_config.db_path);
         info!("Clearing db at {}", db_path.display());
         if db_path.exists() {
-            let _ = std::fs::remove_file(db_path);
+            std::fs::remove_file(db_path)?;
         }
 
         Ok(())

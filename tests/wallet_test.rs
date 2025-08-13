@@ -1,52 +1,126 @@
 #![cfg(test)]
+mod helper;
 use bitcoin::{Address, Amount, Network, PublicKey, ScriptBuf};
-use bitvmx_wallet::config::Config;
 use bitvmx_wallet::wallet::{RegtestWallet, Wallet};
 
 use bdk_wallet::{SignOptions, TxOrdering};
 
-use anyhow::{Ok, Result};
+use anyhow::Result;
 use bitcoind::bitcoind::Bitcoind;
 use key_manager::create_key_manager_from_config;
 use key_manager::key_store::KeyStore;
 use std::rc::Rc;
-use std::{str::FromStr, sync::Once};
+use std::{str::FromStr};
 use storage_backend::storage::Storage;
-use tracing_subscriber::EnvFilter;
+use crate::helper::clean_and_load_config;
 
-static INIT: Once = Once::new();
 const P2WPKH_FEE_RATE: u64 = 141;
 const COINBASE_AMOUNT: u64 = 50;
 
-pub fn config_trace() {
-    INIT.call_once(|| {
-        config_trace_aux();
-    });
+
+#[test]
+#[ignore]
+fn test_bdk_wallet_sync_wallet() -> Result<(), anyhow::Error> {
+    let config = clean_and_load_config("config/regtest.yaml")?;
+    let storage = Rc::new(Storage::new(&config.storage)?);
+    let key_store = KeyStore::new(storage.clone());
+    let key_manager = Rc::new(create_key_manager_from_config(
+        &config.key_manager,
+        key_store,
+        storage.clone(),
+    )?);
+
+    // Test sync errors
+    // Create a wallet with invalid Bitcoin config
+    let mut invalid_bitcoin_config = config.bitcoin.clone();
+    invalid_bitcoin_config.url = "http://127.0.0.1:666".to_string(); //invalid port
+
+    let private_key = "cVt4o7BGAig1UXywgGSmARhxMdzP5qvQsxKkSsc1XEkw3tDTQFpy";
+    let mut wallet = Wallet::from_private_key(
+        invalid_bitcoin_config,
+        config.wallet.clone(),
+        key_manager.clone(),
+        private_key,
+        None,
+    )?;
+
+    let result  =  wallet.tick();
+    assert!(result.is_err(), "Tick one block to a invalid Bitcoin node should throw an error");
+    let error_description = result.unwrap_err().to_string();
+    assert!(
+        error_description.contains("Couldn't connect to host: Connection refused"), 
+        "Error should contain: Couldn't connect to host: Connection refused, got: {}", 
+        error_description
+    );
+
+    let result  =  wallet.sync_wallet();
+    assert!(result.is_err(), "Sync one block to a invalid Bitcoin node should throw an error");
+    let error_description = result.unwrap_err().to_string();
+    assert!(
+        error_description.contains("Couldn't connect to host: Connection refused"), 
+        "Error should contain:Couldn't connect to host: Connection refused, got: {}", 
+        error_description
+    );
+
+    // TODO fix errors inside thread for sync_wallet_multi_thread
+
+    // Test successfull sync
+    // Start a Bitcoin node
+    let bitcoind = Bitcoind::new(
+        "bitcoin-regtest",
+        "ruimarinho/bitcoin-core",
+        config.bitcoin.clone(),
+    );
+    bitcoind.start()?;
+
+    // Create a wallet with correct config and sync it
+    let mut wallet = Wallet::from_private_key(
+        config.bitcoin.clone(),
+        config.wallet.clone(),
+        key_manager.clone(),
+        private_key,
+        None,
+    )?;
+    assert!(!wallet.is_ready, "Wallet should not be ready on start");
+
+    // Tick for 13 blocks and check that the wallet is not ready
+    wallet.mine(13)?;
+    for _ in 0..13 {
+        let blocks_received  =  wallet.tick()?;
+        assert_eq!(blocks_received, 1, "Tick should return 1 block received");
+        assert!(!wallet.is_ready, "Wallet should not be ready");
+    }
+    // Once all blocks are synced, tick should return 0 blocks received and the wallet should be ready
+    let blocks_received  =  wallet.tick()?;
+    assert_eq!(blocks_received, 0, "Tick should return 0 block received once the wallet is full synced");
+    assert!(wallet.is_ready, "Wallet should be ready after full sync");
+
+    wallet.mine(1)?;
+    let blocks_received  =  wallet.tick()?;
+    assert_eq!(blocks_received, 1, "Tick should return 1 block received if there are blocks to sync after full synced");
+    assert!(wallet.is_ready, "Wallet should be ready if there are blocks to sync after full synced");
+
+    let blocks_received  =  wallet.sync_wallet()?;
+    assert_eq!(blocks_received, 0, "Sync wallet should return 0 blocks received");
+
+    wallet.mine(13)?;
+
+    let blocks_received  =  wallet.sync_wallet()?;
+    assert_eq!(blocks_received, 13, "Sync wallet should return 13 blocks received");
+
+    let blocks_received  =  wallet.sync_wallet_multi_thread()?;
+    assert_eq!(blocks_received, 0, "Sync wallet with multi thread should return 0 blocks received");
+
+    wallet.mine(123)?;
+
+    let blocks_received  =  wallet.sync_wallet_multi_thread()?;
+    assert_eq!(blocks_received, 123, "Sync wallet with multi thread should return 123 blocks received");
+
+    bitcoind.stop()?;
+    Ok(())
 }
 
-fn config_trace_aux() {
-    let default_modules = ["info", "bitcoincore_rpc=off", "hyper=off", "bollard=off"];
 
-    let filter = EnvFilter::builder()
-        .parse(default_modules.join(","))
-        .expect("Invalid filter");
-
-    tracing_subscriber::fmt()
-        .with_target(true)
-        .with_env_filter(filter)
-        .init();
-}
-
-fn clean_and_load_config(config_path: &str) -> Result<Config, anyhow::Error> {
-    config_trace();
-
-    let config =
-        bitvmx_settings::settings::load_config_file::<Config>(Some(config_path.to_string()))?;
-
-    Wallet::clear_db(&config.wallet)?;
-
-    Ok(config)
-}
 
 #[test]
 #[ignore]
@@ -182,7 +256,8 @@ fn test_bdk_wallet_load_different_wallet_same_db() -> Result<(), anyhow::Error> 
     let error_description = err.to_string();
     assert!(
         error_description.contains("Descriptor mismatch for External keychain"),
-        "Error should contain the descriptor mismatch"
+        "Error should contain the descriptor mismatch, got: {}",
+        error_description
     );
     assert!(error_description.contains("loaded wpkh(039b6347398505f5ec93826dc61c19f47c66c0283ee9be980e29ce325a0f4679ef)#75hac2kl"), "Error should contain the loaded descriptor");
     assert!(error_description.contains("expected wpkh(0312fb0fd3b52b4d0dfd387bfd924f875ac20cb3de085aa3bf2f06e2971f86436b)#5cdng3a7"), "Error should contain the expected descriptor");

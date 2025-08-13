@@ -1,11 +1,7 @@
-use crate::{
-    config::Config,
-    errors::WalletError,
-    wallet::{RegtestWallet, Wallet},
-};
+use std::rc::Rc;
+use crate::{config::Config, errors::WalletError, wallet::{RegtestWallet, Wallet}};
 use bitcoin::PublicKey;
 use key_manager::{create_key_manager_from_config, key_manager::KeyManager, key_store::KeyStore};
-use std::rc::Rc;
 use storage_backend::storage::{KeyValueStore, Storage};
 use tracing::{error, info};
 
@@ -35,7 +31,7 @@ pub struct WalletManager {
 
 /// Manage multiple wallets in a single instance, used for testing purposes
 impl WalletManager {
-    pub fn new(config: Config) -> Result<WalletManager, anyhow::Error> {
+    pub fn new(config: Config) -> Result<WalletManager, WalletError> {
         let storage: Rc<Storage> = Rc::new(Storage::new(&config.storage)?);
         let key_store = KeyStore::new(storage.clone());
         let key_manager = Rc::new(create_key_manager_from_config(
@@ -67,7 +63,7 @@ impl WalletManager {
         Ok(wallets)
     }
 
-    pub fn create_new_wallet(&self, identifier: &str) -> Result<Wallet, anyhow::Error> {
+    pub fn create_new_wallet(&self, identifier: &str) -> Result<Wallet, WalletError> {
         let store_key = StoreKey::Wallet(identifier.to_string());
         let key = store_key.get_key();
         if self.store.has_key(&key)? {
@@ -83,7 +79,7 @@ impl WalletManager {
             config_wallet,
             self.key_manager.clone(),
             index,
-            None,
+            None
         )?;
 
         self.store.set(key, wallet.public_key, None)?;
@@ -91,11 +87,7 @@ impl WalletManager {
         Ok(wallet)
     }
 
-    pub fn create_wallet_from_derive_keypair(
-        &self,
-        identifier: &str,
-        index: u32,
-    ) -> Result<Wallet, anyhow::Error> {
+    pub fn create_wallet_from_derive_keypair(&self, identifier: &str, index: u32) -> Result<Wallet, WalletError> {
         let store_key = StoreKey::Wallet(identifier.to_string());
         let key = store_key.get_key();
         if self.store.has_key(&key)? {
@@ -110,7 +102,7 @@ impl WalletManager {
             config_wallet,
             self.key_manager.clone(),
             index,
-            None,
+            None
         )?;
 
         self.store.set(key, wallet.public_key, None)?;
@@ -122,7 +114,7 @@ impl WalletManager {
         &self,
         identifier: &str,
         private_key: &str,
-    ) -> Result<Wallet, anyhow::Error> {
+    ) -> Result<Wallet, WalletError> {
         let store_key = StoreKey::Wallet(identifier.to_string());
         let key = store_key.get_key();
         if self.store.has_key(&key)? {
@@ -149,7 +141,7 @@ impl WalletManager {
         &self,
         identifier: &str,
         partial_keys: Vec<String>,
-    ) -> Result<Wallet, anyhow::Error> {
+    ) -> Result<Wallet, WalletError> {
         if partial_keys.is_empty() {
             error!("No partial private keys provided");
             return Err(WalletError::InvalidPartialPrivateKeys.into());
@@ -176,33 +168,27 @@ impl WalletManager {
         Ok(wallet)
     }
 
-    pub fn load_wallet(&self, identifier: &str) -> Result<Wallet, anyhow::Error> {
+    pub fn load_wallet(&self, identifier: &str ) -> Result<Wallet, WalletError> {
         if identifier.trim().is_empty() {
-            return Err(
-                WalletError::KeyNotFound(format!("Invalid identifier: {identifier}")).into(),
-            );
+            return Err(WalletError::KeyNotFound(format!("Invalid identifier: {identifier}")).into());
         }
-        let store_key = StoreKey::Wallet(identifier.to_string());
-        let key = store_key.get_key();
-        let pub_key: PublicKey = self.store.get::<&str, PublicKey>(&key)?.unwrap();
+        let key =  StoreKey::Wallet(identifier.to_string()).get_key();
+        info!("Loading wallet {identifier} with key {key}");
+        let pub_key: PublicKey = self.store.get(&key)?.unwrap();
 
-        let mut config_wallet = self.config.wallet.clone();
-        config_wallet.db_path = store_key.db_path();
 
         Wallet::from_key_manager(
             self.config.bitcoin.clone(),
-            config_wallet,
+            self.config.wallet.clone(),
             self.key_manager.clone(),
             &pub_key,
             None,
         )
     }
 
-    pub fn clear_wallet(&self, identifier: &str) -> Result<(), anyhow::Error> {
+    pub fn clear_wallet(&self, identifier: &str) -> Result<(), WalletError> {
         if identifier.trim().is_empty() {
-            return Err(
-                WalletError::KeyNotFound(format!("Invalid identifier: {identifier}")).into(),
-            );
+            return Err(WalletError::KeyNotFound(format!("Invalid identifier: {identifier}")).into());
         }
 
         let store_key = StoreKey::Wallet(identifier.to_string());
@@ -210,16 +196,14 @@ impl WalletManager {
         if !self.store.has_key(&key)? {
             return Err(WalletError::KeyNotFound(key).into());
         }
-
         let mut config_wallet = self.config.wallet.clone();
         config_wallet.db_path = store_key.db_path();
         info!("Clearing db at {}", config_wallet.db_path);
         Wallet::clear_db(&config_wallet)?;
-
         Ok(())
     }
 
-    pub fn clear_all_wallets(&self) -> Result<(), anyhow::Error> {
+    pub fn clear_all_wallets(&self) -> Result<(), WalletError> {
         let key = StoreKey::Wallet(String::new()).get_key();
         info!("key with all wallets {key}");
         for identifier_key in self.store.partial_compare_keys(&key)? {
@@ -236,4 +220,5 @@ impl WalletManager {
         self.store.set(key_index, index + 1, None)?;
         Ok(index)
     }
+
 }

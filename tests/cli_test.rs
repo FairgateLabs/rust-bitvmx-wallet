@@ -1,56 +1,19 @@
 #![cfg(test)]
+mod helper;
 use assert_cmd::Command;
 use bitcoind::bitcoind::Bitcoind;
-use bitvmx_wallet::config::Config;
 use predicates::prelude::*;
-use std::path::Path;
-use std::sync::Once;
-use tracing::info;
-use tracing_subscriber::EnvFilter;
-
-static INIT: Once = Once::new();
+use crate::helper::{clean_and_load_config, clear_db};
 
 const PROJECT_NAME: &str = "bitvmx-wallet";
-
-pub fn config_trace() {
-    INIT.call_once(|| {
-        config_trace_aux();
-    });
-}
-
-fn config_trace_aux() {
-    let default_modules = ["info", "bitcoincore_rpc=off", "hyper=off", "bollard=off"];
-
-    let filter = EnvFilter::builder()
-        .parse(default_modules.join(","))
-        .expect("Invalid filter");
-
-    tracing_subscriber::fmt()
-        .with_target(true)
-        .with_env_filter(filter)
-        .init();
-}
-
-fn load_config(config_path: &str) -> Result<Config, anyhow::Error> {
-    let config =
-        bitvmx_settings::settings::load_config_file::<Config>(Some(config_path.to_string()))?;
-
-    Ok(config)
-}
-
-pub fn clear_db(path: &str) -> Result<(), anyhow::Error> {
-    let path = Path::new(path);
-    info!("Clearing db at {}", path.display());
-    if path.exists() {
-        let _ = std::fs::remove_dir_all(path)?;
-    }
-    Ok(())
-}
 
 #[test]
 #[ignore]
 fn test_btc_to_sat() -> Result<(), anyhow::Error> {
-    config_trace();
+    // Clear all wallets, wallet db, storage and key manager
+    clear_db("/tmp/wallet_manager".as_ref())?;
+    clean_and_load_config("config/regtest.yaml")?;
+
     let mut cmd = Command::cargo_bin(PROJECT_NAME)?;
     cmd.arg("btc-to-sat");
     cmd.arg("1");
@@ -63,7 +26,10 @@ fn test_btc_to_sat() -> Result<(), anyhow::Error> {
 #[test]
 #[ignore]
 fn test_unrecognized_subcommand() -> Result<(), anyhow::Error> {
-    config_trace();
+    // Clear all wallets, wallet db, storage and key manager
+    clear_db("/tmp/wallet_manager".as_ref())?;
+    clean_and_load_config("config/regtest.yaml")?;
+
     let mut cmd = Command::cargo_bin(PROJECT_NAME)?;
     cmd.arg("invalid_argument");
     cmd.assert()
@@ -75,13 +41,9 @@ fn test_unrecognized_subcommand() -> Result<(), anyhow::Error> {
 #[test]
 #[ignore]
 fn test_create_wallet() -> Result<(), anyhow::Error> {
-    config_trace();
-    let config = load_config("config/regtest.yaml")?;
-
     // Clear all wallets, wallet db, storage and key manager
     clear_db("/tmp/wallet_manager".as_ref())?;
-    clear_db(&config.storage.path)?;
-    clear_db(&config.key_storage.path)?;
+    let config = clean_and_load_config("config/regtest.yaml")?;
 
     let bitcoind = Bitcoind::new(
         "bitcoin-regtest",
@@ -153,6 +115,10 @@ fn test_create_wallet() -> Result<(), anyhow::Error> {
         .stdout(predicate::str::contains(format!("Wallet: test-wallet")))
         .stdout(predicate::str::contains("- Balance: { immature: 0 BTC, trusted_pending: 0 BTC, untrusted_pending: 0 BTC, confirmed: 148.99999859 BTC }"));
 
+    // TODO add test for partial private keys
+
+    // TODO add test for edge cases
+    
     bitcoind.stop()?;
     Ok(())
 }

@@ -139,6 +139,7 @@ wallet:
 - All transactions are constructed and signed by this CLI, not by the Bitcoin Core wallet.
 - Local wallet/key data is stored in the paths specified in your config file.
 - Local wallet transactions data is stored under `/tmp/wallet_manager/` folder.
+- Wallet allows to use single address, but we strongly recommend to use some change address to allow using the utxo of an unconfirmedchange balance of tranasctions.
 
 ## License
 

@@ -29,7 +29,7 @@ pub fn clear_db(path: &str) -> Result<(), anyhow::Error> {
     let path = Path::new(path);
     info!("Clearing db at {}", path.display());
     if path.exists() {
-        let _ = std::fs::remove_dir_all(path)?;
+        std::fs::remove_dir_all(path)?;
     }
     Ok(())
 }

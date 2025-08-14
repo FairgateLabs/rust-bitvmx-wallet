@@ -134,6 +134,35 @@ impl Wallet {
         )
     }
 
+     /// Create a wallet from a config file
+     pub fn from_config(
+        bitcoin_config: RpcConfig,
+        wallet_config: WalletConfig,
+        key_manager: Rc<KeyManager>,
+    ) -> Result<Wallet, WalletError> {
+        let receive_key = match wallet_config.receive_key.clone() {
+            Some(receive_key) => receive_key,
+            None => return Err(WalletError::InvalidReceiveKey("No receive key provided in config file".to_string())),
+        };
+        let public_key = key_manager.import_private_key(&receive_key)?;
+        let descriptor = Self::p2wpkh_descriptor(&key_manager, &public_key)?;
+        let change_descriptor = match wallet_config.change_key.clone() {
+            Some(change_key) => {
+                let change_public_key = key_manager.import_private_key(&change_key)?;
+                Some(Self::p2wpkh_descriptor(&key_manager, &change_public_key)?)
+            }
+            None => None,
+        };
+        Self::new(
+            bitcoin_config,
+            wallet_config,
+            key_manager,
+            &public_key,
+            &descriptor,
+            change_descriptor.as_deref(),
+        )
+    }
+
     /// Create a p2wpkh descriptor using a key from the key manager
     fn p2wpkh_descriptor(
         key_manager: &Rc<KeyManager>,
@@ -429,10 +458,13 @@ impl Wallet {
         let mut blocks_received = 0_u64;
         let mut emitter = self.create_emitter();
         if let Some(emission) = emitter.next_block()? {
+            // There is a new block to sync
             self.sync_block(emission)?;
             blocks_received += 1;
         } else {
+            // There is no new block to sync, so we sync the mempool
             self.sync_mempool(emitter.mempool()?)?;
+            // The wallet is ready to be used
             self.is_ready = true;
         }
         Ok(blocks_received)

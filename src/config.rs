@@ -7,13 +7,17 @@ use storage_backend::storage_config::StorageConfig;
 pub struct WalletConfig {
     pub db_path: String,
     pub start_height: Option<u32>,
+    pub receive_key: Option<String>,
+    pub change_key: Option<String>,
 }
 
 impl WalletConfig {
-    pub fn new(db_path: String, start_height: Option<u32>) -> Result<WalletConfig, anyhow::Error> {
+    pub fn new(db_path: String, start_height: Option<u32>, receive_key: Option<String>, change_key: Option<String>) -> Result<WalletConfig, anyhow::Error> {
         Ok(WalletConfig {
             db_path,
             start_height,
+            receive_key,
+            change_key,
         })
     }
 }

@@ -38,6 +38,9 @@ pub enum WalletError {
     #[error("Error when getting system time: {0}")]
     SystemTimeError(#[from] std::time::SystemTimeError),
 
+    #[error("Invalid receive key: {0}")]
+    InvalidReceiveKey(String),
+
     // Bdk Wallet Errors
     #[error("Error with the Bitcoin Core RPC: {0}")]
     BitcoinCoreRpcError(#[from] bdk_bitcoind_rpc::bitcoincore_rpc::Error),

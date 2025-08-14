@@ -53,20 +53,11 @@ cargo run -- [OPTIONS] <COMMAND>
 - `export-wallet <IDENTIFIER>`  
   Export the public and secret key for a wallet.
 
-- `add-funding <IDENTIFIER> <FUNDING_ID> <OUTPOINT> <AMOUNT>`  
-  Register a UTXO as funding (OUTPOINT format: `"txid:vout"`).
+- `send-and-mine <IDENTIFIER> <TO_ADDRESS> <AMOUNT>`  
+  Send funds to an address.
 
-- `remove-funding <IDENTIFIER> <FUNDING_ID>`  
-  Remove a funding entry.
-
-- `fund-address <IDENTIFIER> <FUNDING_ID> <TO_PUBKEY> <AMOUNT> <FEE> {OUTPUT_IS_TAPROOT = FALSE}`  
-  Send funds to a public key.
-
-- `confirm-transfer <IDENTIFIER> <FUNDING_ID>`  
-  Confirm a pending transfer.
-
-- `revert-transfer <IDENTIFIER> <FUNDING_ID>`  
-  Revert a pending transfer.
+- `cancel-transtxfer <IDENTIFIER> <TX_ID>`  
+  Cancel a pending transfer.
 
 - `list-funds <IDENTIFIER>`  
   List all funds for an identifier.
@@ -74,7 +65,7 @@ cargo run -- [OPTIONS] <COMMAND>
 - `mine <NUM_BLOCKS>`  
   Mine blocks (regtest only).
 
-- `regtest-fund <IDENTIFIER> <FUNDING_ID> <AMOUNT>`  
+- `regtest-fund <IDENTIFIER> <AMOUNT>`  
   Fund an identifier using regtest coins (only works if your node is in regtest mode and the wallet name matches).
 
 - `btc-to-sat <BTC>`  

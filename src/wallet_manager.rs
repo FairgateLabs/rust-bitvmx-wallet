@@ -67,7 +67,7 @@ impl WalletManager {
         let store_key = StoreKey::Wallet(identifier.to_string());
         let key = store_key.get_key();
         if self.store.has_key(&key)? {
-            return Err(WalletError::KeyAlreadyExists(identifier.to_string()).into());
+            return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
 
         let mut config_wallet = self.config.wallet.clone();
@@ -91,7 +91,7 @@ impl WalletManager {
         let store_key = StoreKey::Wallet(identifier.to_string());
         let key = store_key.get_key();
         if self.store.has_key(&key)? {
-            return Err(WalletError::KeyAlreadyExists(identifier.to_string()).into());
+            return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
 
         let mut config_wallet = self.config.wallet.clone();
@@ -118,7 +118,7 @@ impl WalletManager {
         let store_key = StoreKey::Wallet(identifier.to_string());
         let key = store_key.get_key();
         if self.store.has_key(&key)? {
-            return Err(WalletError::KeyAlreadyExists(identifier.to_string()).into());
+            return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
 
         let mut config_wallet = self.config.wallet.clone();
@@ -144,13 +144,13 @@ impl WalletManager {
     ) -> Result<Wallet, WalletError> {
         if partial_keys.is_empty() {
             error!("No partial private keys provided");
-            return Err(WalletError::InvalidPartialPrivateKeys.into());
+            return Err(WalletError::InvalidPartialPrivateKeys);
         }
 
         let store_key = StoreKey::Wallet(identifier.to_string());
         let key = store_key.get_key();
         if self.store.has_key(&key)? {
-            return Err(WalletError::KeyAlreadyExists(identifier.to_string()).into());
+            return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
 
         let mut config_wallet = self.config.wallet.clone();
@@ -170,7 +170,7 @@ impl WalletManager {
 
     pub fn load_wallet(&self, identifier: &str ) -> Result<Wallet, WalletError> {
         if identifier.trim().is_empty() {
-            return Err(WalletError::KeyNotFound(format!("Invalid identifier: {identifier}")).into());
+            return Err(WalletError::KeyNotFound(format!("Invalid identifier: {identifier}")));
         }
         let key =  StoreKey::Wallet(identifier.to_string()).get_key();
         info!("Loading wallet {identifier} with key {key}");
@@ -188,13 +188,13 @@ impl WalletManager {
 
     pub fn clear_wallet(&self, identifier: &str) -> Result<(), WalletError> {
         if identifier.trim().is_empty() {
-            return Err(WalletError::KeyNotFound(format!("Invalid identifier: {identifier}")).into());
+            return Err(WalletError::KeyNotFound(format!("Invalid identifier: {identifier}")));
         }
 
         let store_key = StoreKey::Wallet(identifier.to_string());
         let key = store_key.get_key();
         if !self.store.has_key(&key)? {
-            return Err(WalletError::KeyNotFound(key).into());
+            return Err(WalletError::KeyNotFound(key));
         }
         let mut config_wallet = self.config.wallet.clone();
         config_wallet.db_path = store_key.db_path();

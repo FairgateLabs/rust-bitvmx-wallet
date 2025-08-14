@@ -45,15 +45,6 @@ pub enum WalletError {
     #[error("Error with the rusqlite: {0}")]
     RusqliteError(#[from] bdk_wallet::rusqlite::Error),
 
-    #[error("Error when loading Bdk wallet: {0}")]
-    LoadWalletError(#[from] bdk_wallet::LoadError),
-
-    #[error("Error when loading Bdk wallet on persister {0}")]
-    WalletPersisterError(#[from] bdk_wallet::LoadWithPersistError<bdk_wallet::rusqlite::Error>),
-
-    #[error("Error when creating Bdk wallet {0}")]
-    CreateWalletError(#[from] bdk_wallet::CreateWithPersistError<bdk_wallet::rusqlite::Error>),
-
     #[error("Error when creating transaction: {0}")]
     CreateTxError(#[from] bdk_wallet::error::CreateTxError),
 
@@ -68,6 +59,14 @@ pub enum WalletError {
 
     #[error("Error when parsing descriptor: {0}")]
     DescriptorError(#[from] bdk_wallet::descriptor::DescriptorError),
+
+    // Some errors are too large according to clippy https://rust-lang.github.io/rust-clippy/master/index.html#result_large_err
+    // So we are using the Boxed representation of the error
+    #[error("Error when loading Bdk wallet on persister {0}")]
+    LoadWalletWithPersistError(#[from] Box<bdk_wallet::LoadWithPersistError<bdk_wallet::rusqlite::Error>>),
+
+    #[error("Error when creating Bdk wallet {0}")]
+    CreateWalletError(#[from] Box<bdk_wallet::CreateWithPersistError<bdk_wallet::rusqlite::Error>>),
 
     // Bitcoin Errors
     #[error("Error when parsing address: {0}")]

@@ -156,7 +156,7 @@ impl Wallet {
     ) -> Result<Wallet, WalletError> {
         if partial_private_keys.is_empty() {
             error!("No partial private keys provided");
-            return Err(WalletError::InvalidPartialPrivateKeys.into());
+            return Err(WalletError::InvalidPartialPrivateKeys);
         }
         let aggregated_public_key = if partial_private_keys.iter().all(|key| key.len() == 64) {
             key_manager.import_partial_secret_keys(partial_private_keys, bitcoin_config.network)?
@@ -164,7 +164,7 @@ impl Wallet {
             key_manager.import_partial_private_keys(partial_private_keys, bitcoin_config.network)?
         } else {
             error!("Invalid partial private keys provided");
-            return Err(WalletError::InvalidPartialPrivateKeys.into());
+            return Err(WalletError::InvalidPartialPrivateKeys);
         };
 
         let descriptor = Self::p2tr_descriptor(&key_manager, &aggregated_public_key)?;
@@ -262,7 +262,8 @@ impl Wallet {
         let wallet_opt = load_params
             .check_network(network)
             .extract_keys()
-            .load_wallet(conn)?;
+            .load_wallet(conn)
+            .map_err(|e| WalletError::LoadWalletWithPersistError(Box::new(e)))?;
 
         let mut wallet = match wallet_opt {
             Some(_wallet) => _wallet,
@@ -270,12 +271,14 @@ impl Wallet {
             None => match change_descriptor {
                 Some(change) => BdkWallet::create(descriptor.to_string(), change.to_string())
                     .network(network)
-                    .create_wallet(conn)?,
+                    .create_wallet(conn)
+                    .map_err(|e| WalletError::CreateWalletError(Box::new(e)))?,
                 // If no change descriptor is provided, create a single descriptor wallet
                 // see https://docs.rs/bdk_wallet/2.0.0/bdk_wallet/struct.Wallet.html#method.create_single
                 None => BdkWallet::create_single(descriptor.to_string())
                     .network(network)
-                    .create_wallet(conn)?,
+                    .create_wallet(conn)
+                    .map_err(|e| WalletError::CreateWalletError(Box::new(e)))?,
             },
         };
 
@@ -520,7 +523,7 @@ impl Wallet {
                 Ok(blocks_received)
             },
             Err(e) => { 
-                Err(WalletError::ThreadPanicked(format!("Sync wallet error: Emitter thread panicked with: {:?}", e)))
+                Err(WalletError::ThreadPanicked(format!("Sync wallet error: Emitter thread panicked with: {e:?}")))
             }
         }
     }
@@ -612,7 +615,7 @@ impl RegtestWallet for Wallet {
         if self.network != Network::Regtest {
             use crate::errors::WalletError;
 
-            return Err(WalletError::RegtestOnly.into());
+            return Err(WalletError::RegtestOnly);
         }
         Ok(())
     }

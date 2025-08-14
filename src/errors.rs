@@ -84,4 +84,7 @@ pub enum WalletError {
     #[error("Error when parsing uncompressed public key: {0}")]
     UncompressedPublicKeyError(#[from] bitcoin::key::UncompressedPublicKeyError),
 
+    #[error("Error when parsing private key from WIF: {0}")]
+    FromWifError(#[from] bitcoin::key::FromWifError),
+
 }

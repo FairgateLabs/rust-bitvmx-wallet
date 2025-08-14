@@ -279,10 +279,12 @@ fn main() {
         Commands::ExportWallet { identifier } => {
             let wallet = wallet_manager.load_wallet(identifier).unwrap();
             match wallet.export_wallet() {
-                Ok((public_key, private_key)) => {
+                Ok((public_keys, private_keys)) => {
                     println!("Wallet:");
-                    println!(" - Pubkey: {public_key}");
-                    println!(" - Private key: {private_key}");
+                    for (public_key, private_key) in public_keys.iter().zip(private_keys.iter()) {
+                        println!(" - Pubkey descriptor: {public_key}");
+                        println!(" - Private key descriptor: {private_key}");
+                    }
                 }
                 Err(e) => eprintln!("Error exporting wallet: {e}"),
             }

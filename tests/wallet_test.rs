@@ -22,13 +22,6 @@ const COINBASE_AMOUNT: u64 = 50;
 #[ignore]
 fn test_bdk_wallet_sync_wallet() -> Result<(), anyhow::Error> {
     let config = clean_and_load_config("config/regtest.yaml")?;
-    let storage = Rc::new(Storage::new(&config.storage)?);
-    let key_store = KeyStore::new(storage.clone());
-    let key_manager = Rc::new(create_key_manager_from_config(
-        &config.key_manager,
-        key_store,
-        storage.clone(),
-    )?);
 
     // Test sync errors
     // Create a wallet with invalid Bitcoin config
@@ -39,7 +32,6 @@ fn test_bdk_wallet_sync_wallet() -> Result<(), anyhow::Error> {
     let mut wallet = Wallet::from_private_key(
         invalid_bitcoin_config,
         config.wallet.clone(),
-        key_manager.clone(),
         private_key,
         None,
     )?;
@@ -77,7 +69,6 @@ fn test_bdk_wallet_sync_wallet() -> Result<(), anyhow::Error> {
     let mut wallet = Wallet::from_private_key(
         config.bitcoin.clone(),
         config.wallet.clone(),
-        key_manager.clone(),
         private_key,
         None,
     )?;
@@ -126,13 +117,6 @@ fn test_bdk_wallet_sync_wallet() -> Result<(), anyhow::Error> {
 #[ignore]
 fn test_bdk_wallet() -> Result<(), anyhow::Error> {
     let config = clean_and_load_config("config/regtest.yaml")?;
-    let storage = Rc::new(Storage::new(&config.storage)?);
-    let key_store = KeyStore::new(storage.clone());
-    let key_manager = Rc::new(create_key_manager_from_config(
-        &config.key_manager,
-        key_store,
-        storage.clone(),
-    )?);
 
     let bitcoind = Bitcoind::new(
         "bitcoin-regtest",
@@ -145,7 +129,6 @@ fn test_bdk_wallet() -> Result<(), anyhow::Error> {
     let mut wallet = Wallet::from_private_key(
         config.bitcoin.clone(),
         config.wallet.clone(),
-        key_manager.clone(),
         private_key,
         None,
     )?;
@@ -208,13 +191,6 @@ fn test_bdk_wallet() -> Result<(), anyhow::Error> {
 #[ignore]
 fn test_bdk_wallet_load_different_wallet_same_db() -> Result<(), anyhow::Error> {
     let config = clean_and_load_config("config/regtest.yaml")?;
-    let storage = Rc::new(Storage::new(&config.storage)?);
-    let key_store = KeyStore::new(storage.clone());
-    let key_manager = Rc::new(create_key_manager_from_config(
-        &config.key_manager,
-        key_store,
-        storage.clone(),
-    )?);
 
     let bitcoind = Bitcoind::new(
         "bitcoin-regtest",
@@ -228,7 +204,6 @@ fn test_bdk_wallet_load_different_wallet_same_db() -> Result<(), anyhow::Error> 
     let mut wallet = Wallet::from_private_key(
         config.bitcoin.clone(),
         config.wallet.clone(),
-        key_manager.clone(),
         original_private_key,
         None,
     )?;
@@ -244,7 +219,6 @@ fn test_bdk_wallet_load_different_wallet_same_db() -> Result<(), anyhow::Error> 
     let result = Wallet::from_private_key(
         config.bitcoin.clone(),
         config.wallet.clone(),
-        key_manager.clone(),
         private_key,
         None,
     );
@@ -267,7 +241,6 @@ fn test_bdk_wallet_load_different_wallet_same_db() -> Result<(), anyhow::Error> 
     wallet = Wallet::from_private_key(
         config.bitcoin.clone(),
         config.wallet.clone(),
-        key_manager.clone(),
         private_key,
         None,
     )?;
@@ -302,7 +275,6 @@ fn test_bdk_wallet_load_different_wallet_same_db() -> Result<(), anyhow::Error> 
     let mut wallet = Wallet::from_private_key(
         config.bitcoin.clone(),
         config.wallet.clone(),
-        key_manager.clone(),
         original_private_key,
         None,
     )?;
@@ -322,13 +294,6 @@ fn test_bdk_wallet_load_different_wallet_same_db() -> Result<(), anyhow::Error> 
 #[ignore]
 fn test_bdk_wallet_balance() -> Result<(), anyhow::Error> {
     let config = clean_and_load_config("config/regtest.yaml")?;
-    let storage = Rc::new(Storage::new(&config.storage)?);
-    let key_store = KeyStore::new(storage.clone());
-    let key_manager = Rc::new(create_key_manager_from_config(
-        &config.key_manager,
-        key_store,
-        storage.clone(),
-    )?);
 
     let bitcoind = Bitcoind::new(
         "bitcoin-regtest",
@@ -341,7 +306,6 @@ fn test_bdk_wallet_balance() -> Result<(), anyhow::Error> {
     let mut wallet = Wallet::from_private_key(
         config.bitcoin.clone(),
         config.wallet.clone(),
-        key_manager.clone(),
         private_key,
         None,
     )?;
@@ -602,13 +566,6 @@ fn test_bdk_wallet_balance() -> Result<(), anyhow::Error> {
 #[ignore]
 fn test_bdk_wallet_balance_with_change_address() -> Result<(), anyhow::Error> {
     let config = clean_and_load_config("config/regtest.yaml")?;
-    let storage = Rc::new(Storage::new(&config.storage)?);
-    let key_store = KeyStore::new(storage.clone());
-    let key_manager = Rc::new(create_key_manager_from_config(
-        &config.key_manager,
-        key_store,
-        storage.clone(),
-    )?);
 
     let bitcoind = Bitcoind::new(
         "bitcoin-regtest",
@@ -622,7 +579,6 @@ fn test_bdk_wallet_balance_with_change_address() -> Result<(), anyhow::Error> {
     let mut wallet = Wallet::from_private_key(
         config.bitcoin.clone(),
         config.wallet.clone(),
-        key_manager.clone(),
         private_key,
         Some(change_private_key),
     )?;
@@ -721,15 +677,7 @@ fn test_bdk_wallet_balance_with_change_address() -> Result<(), anyhow::Error> {
 #[test]
 #[ignore]
 fn test_bdk_wallet_build_tx() -> Result<(), anyhow::Error> {
-    // Arrenge
     let config = clean_and_load_config("config/regtest.yaml")?;
-    let storage = Rc::new(Storage::new(&config.storage)?);
-    let key_store = KeyStore::new(storage.clone());
-    let key_manager = Rc::new(create_key_manager_from_config(
-        &config.key_manager,
-        key_store,
-        storage.clone(),
-    )?);
 
     let bitcoind = Bitcoind::new(
         "bitcoin-regtest",
@@ -742,7 +690,6 @@ fn test_bdk_wallet_build_tx() -> Result<(), anyhow::Error> {
     let mut wallet = Wallet::from_private_key(
         config.bitcoin.clone(),
         config.wallet.clone(),
-        key_manager.clone(),
         private_key,
         None,
     )?;
@@ -838,13 +785,12 @@ fn test_regtest_wallet() -> Result<(), anyhow::Error> {
     );
     bitcoind.start()?;
 
-    let private_key = "cVt4o7BGAig1UXywgGSmARhxMdzP5qvQsxKkSsc1XEkw3tDTQFpy";
-    let mut wallet = Wallet::from_private_key(
+    let mut wallet = Wallet::from_derive_keypair(
         config.bitcoin.clone(),
         config.wallet.clone(),
         key_manager.clone(),
-        private_key,
-        None,
+        0,
+        Some(1),
     )?;
 
     // Mine 101 blocks to the receive address to ensure only one coinbase output is mature

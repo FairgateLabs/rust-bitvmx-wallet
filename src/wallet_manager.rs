@@ -127,12 +127,12 @@ impl WalletManager {
         let wallet = Wallet::from_private_key(
             self.config.bitcoin.clone(),
             config_wallet,
-            self.key_manager.clone(),
             private_key,
             None,
         )?;
 
-        self.store.set(key, wallet.public_key, None)?;
+        let public_key = self.key_manager.import_private_key(private_key)?;
+        self.store.set(key, public_key, None)?;
 
         Ok(wallet)
     }

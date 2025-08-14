@@ -1,8 +1,7 @@
 #[allow(unused_imports)]
 use crate::{config::WalletConfig, errors::WalletError};
 use bitcoin::{
-    Address, Amount, Block, FeeRate, Network, PrivateKey, Psbt, PublicKey, ScriptBuf, Transaction,
-    Txid, XOnlyPublicKey,
+    key::Secp256k1, Address, Amount, Block, FeeRate, Network, PrivateKey, Psbt, PublicKey, ScriptBuf, Transaction, Txid, XOnlyPublicKey
 };
 
 use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
@@ -14,9 +13,7 @@ use bdk_bitcoind_rpc::{
     bitcoincore_rpc::{Auth, Client, RpcApi}, BlockEvent, Emitter, MempoolEvent
 };
 use bdk_wallet::{
-    coin_selection::DefaultCoinSelectionAlgorithm, rusqlite::Connection,
-    wallet_name_from_descriptor, Balance, KeychainKind, LocalOutput, PersistedWallet, SignOptions,
-    TxBuilder, TxOrdering, Wallet as BdkWallet, WalletTx,
+    coin_selection::DefaultCoinSelectionAlgorithm, rusqlite::Connection, wallet_name_from_descriptor, Balance, KeychainKind, LocalOutput, PersistedWallet, SignOptions, TxBuilder, TxOrdering, Wallet as BdkWallet, WalletTx
 };
 use ctrlc;
 use std::{
@@ -45,7 +42,6 @@ pub struct Wallet {
     pub start_height: u32,
     pub is_ready: bool,
     conn: Connection,
-    key_manager: Rc<KeyManager>,
 }
 
 impl Display for Wallet {
@@ -56,6 +52,8 @@ impl Display for Wallet {
 
 impl Wallet {
     /// Create a wallet from a public key used to get the private key from the key manager
+    /// Change public key is optional, if not provided, the wallet will be a single descriptor wallet
+    /// and won't be able to spend trusted unconfirmed utxos
     pub fn from_key_manager(
         bitcoin_config: RpcConfig,
         wallet_config: WalletConfig,
@@ -63,17 +61,16 @@ impl Wallet {
         public_key: &PublicKey,
         change_public_key: Option<&PublicKey>,
     ) -> Result<Wallet, WalletError> {
-        let descriptor = Self::p2wpkh_descriptor(&key_manager, public_key)?;
+        let descriptor = Self::p2wpkh_descriptor(&key_manager.export_secret(public_key)?.to_wif())?;
         let change_descriptor = match change_public_key {
             Some(change_public_key) => {
-                Some(Self::p2wpkh_descriptor(&key_manager, change_public_key)?)
+                Some(Self::p2wpkh_descriptor(&key_manager.export_secret(change_public_key)?.to_wif())?)
             }
             None => None,
         };
         Self::new(
             bitcoin_config,
             wallet_config,
-            key_manager,
             public_key,
             &descriptor,
             change_descriptor.as_deref(),
@@ -81,6 +78,8 @@ impl Wallet {
     }
 
     /// Create a wallet from an index to derive the key pair from the key manager
+    /// Change index is optional, if not provided, the wallet will be a single descriptor wallet
+    /// and won't be able to spend trusted unconfirmed utxos
     pub fn from_derive_keypair(
         bitcoin_config: RpcConfig,
         wallet_config: WalletConfig,
@@ -89,18 +88,17 @@ impl Wallet {
         change_index: Option<u32>,
     ) -> Result<Wallet, WalletError> {
         let public_key = key_manager.derive_keypair(index)?;
-        let descriptor = Self::p2wpkh_descriptor(&key_manager, &public_key)?;
+        let descriptor = Self::p2wpkh_descriptor(&key_manager.export_secret(&public_key)?.to_wif())?;
         let change_descriptor = match change_index {
             Some(change_index) => {
                 let change_public_key = key_manager.derive_keypair(change_index)?;
-                Some(Self::p2wpkh_descriptor(&key_manager, &change_public_key)?)
+                Some(Self::p2wpkh_descriptor(&key_manager.export_secret(&change_public_key)?.to_wif())?)
             }
             None => None,
         };
         Self::new(
             bitcoin_config,
             wallet_config,
-            key_manager,
             &public_key,
             &descriptor,
             change_descriptor.as_deref(),
@@ -108,72 +106,60 @@ impl Wallet {
     }
 
     /// Create a wallet from a private key, stores it in the key manager
+    /// Change private key is optional, if not provided, the wallet will be a single descriptor wallet
+    /// and won't be able to spend trusted unconfirmed utxos
     pub fn from_private_key(
         bitcoin_config: RpcConfig,
         wallet_config: WalletConfig,
-        key_manager: Rc<KeyManager>,
         private_key: &str,
         change_private_key: Option<&str>,
     ) -> Result<Wallet, WalletError> {
-        let public_key = key_manager.import_private_key(private_key)?;
-        let descriptor = Self::p2wpkh_descriptor(&key_manager, &public_key)?;
+        let public_key = PrivateKey::from_str(private_key)?.public_key(&Secp256k1::new());
+        let descriptor = Self::p2wpkh_descriptor(private_key)?;
         let change_descriptor = match change_private_key {
             Some(change_private_key) => {
-                let change_public_key = key_manager.import_private_key(change_private_key)?;
-                Some(Self::p2wpkh_descriptor(&key_manager, &change_public_key)?)
+                Some(Self::p2wpkh_descriptor(change_private_key)?)
             }
             None => None,
         };
         Self::new(
             bitcoin_config,
             wallet_config,
-            key_manager,
             &public_key,
             &descriptor,
             change_descriptor.as_deref(),
         )
     }
 
-     /// Create a wallet from a config file
+     /// Create a wallet from a config file, the receive key in the config file is required, the change key is optional
+     /// Keys need to be in WIF format
+     /// Change key is optional, if not provided, the wallet will be a single descriptor wallet
+     /// and won't be able to spend trusted unconfirmed utxos
      pub fn from_config(
         bitcoin_config: RpcConfig,
         wallet_config: WalletConfig,
-        key_manager: Rc<KeyManager>,
     ) -> Result<Wallet, WalletError> {
         let receive_key = match wallet_config.receive_key.clone() {
             Some(receive_key) => receive_key,
             None => return Err(WalletError::InvalidReceiveKey("No receive key provided in config file".to_string())),
         };
-        let public_key = key_manager.import_private_key(&receive_key)?;
-        let descriptor = Self::p2wpkh_descriptor(&key_manager, &public_key)?;
-        let change_descriptor = match wallet_config.change_key.clone() {
-            Some(change_key) => {
-                let change_public_key = key_manager.import_private_key(&change_key)?;
-                Some(Self::p2wpkh_descriptor(&key_manager, &change_public_key)?)
-            }
-            None => None,
-        };
-        Self::new(
+        let change_key = wallet_config.change_key.clone();
+        Self::from_private_key(
             bitcoin_config,
             wallet_config,
-            key_manager,
-            &public_key,
-            &descriptor,
-            change_descriptor.as_deref(),
+            &receive_key,
+            change_key.as_deref(),
         )
     }
 
     /// Create a p2wpkh descriptor using a key from the key manager
     fn p2wpkh_descriptor(
-        key_manager: &Rc<KeyManager>,
-        public_key: &PublicKey,
+        private_key: &str,
     ) -> Result<String, WalletError> {
-        // Export the private key from the key manager
-        let private_key = key_manager.export_secret(public_key)?;
-        // This descriptor for the wallet, wpkh indicates native segwit private key
+        // This descriptor for the wallet, wpkh indicates native segwit private key in wif format
         // See https://docs.rs/bdk_wallet/2.0.0/bdk_wallet/macro.descriptor.html
         // and https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md#examples
-        Ok(format!("wpkh({})", private_key.to_wif()))
+        Ok(format!("wpkh({private_key})"))
     }
 
     /// Create a wallet from partial private keys of musig2
@@ -196,11 +182,10 @@ impl Wallet {
             return Err(WalletError::InvalidPartialPrivateKeys);
         };
 
-        let descriptor = Self::p2tr_descriptor(&key_manager, &aggregated_public_key)?;
+        let descriptor = Self::p2tr_descriptor(&key_manager.export_secret(&aggregated_public_key)?.to_wif())?;
         Self::new(
             bitcoin_config,
             wallet_config,
-            key_manager,
             &aggregated_public_key,
             &descriptor,
             None,
@@ -209,23 +194,21 @@ impl Wallet {
 
     /// Create a p2wpkh descriptor using a key from the key manager
     fn p2tr_descriptor(
-        key_manager: &Rc<KeyManager>,
-        public_key: &PublicKey,
+        private_key: &str,
     ) -> Result<String, WalletError> {
-        // Export the private key from the key manager
-        let private_key = key_manager.export_secret(public_key)?;
         // P2TR output with the specified key as internal key, and optionally a tree of script paths.
         // tr(KEY) or tr(KEY,TREE) (top level only): P2TR output with the specified key as internal key, and optionally a tree of script paths.
         // See https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md#examples
-        Ok(format!("tr({})", private_key.to_wif()))
+        Ok(format!("tr({private_key})"))
     }
 
     /// Returns a wallet with initial data persisted to a rusqlite database.
     /// Note that the descriptor secret keys are not persisted to the database.
+    /// Change descriptor is optional, if not provided, the wallet will be a single descriptor wallet
+    /// and won't be able to spend trusted unconfirmed utxos
     pub fn new(
         bitcoin_config: RpcConfig,
         wallet_config: WalletConfig,
-        key_manager: Rc<KeyManager>,
         public_key: &PublicKey,
         descriptor: &str,
         change_descriptor: Option<&str>
@@ -270,7 +253,6 @@ impl Wallet {
             start_height,
             is_ready: false,
             conn,
-            key_manager,
         })
     }
 
@@ -595,7 +577,7 @@ pub trait RegtestWallet {
     fn check_network(&self) -> Result<(), WalletError>;
 
     /// Export the wallet
-    fn export_wallet(&self) -> Result<(PublicKey, PrivateKey), WalletError>;
+    fn export_wallet(&self) -> Result<(Vec<String>, Vec<String>), WalletError>;
 
     /// Generate blocks and send the coinbase reward to a specific address
     /// Returns the coinbase transactions
@@ -652,9 +634,15 @@ impl RegtestWallet for Wallet {
         Ok(())
     }
 
-    fn export_wallet(&self) -> Result<(PublicKey, PrivateKey), WalletError> {
-        let private_key = self.key_manager.export_secret(&self.public_key)?;
-        Ok((self.public_key, private_key))
+    fn export_wallet(&self) -> Result<(Vec<String>, Vec<String>), WalletError> {
+        let mut private_keys = Vec::new();
+        let mut public_keys = Vec::new();
+        let keymap = self.bdk_wallet.get_signers(KeychainKind::External).as_key_map(self.bdk_wallet.secp_ctx());
+        for (public_des, private_des) in keymap {
+            private_keys.push(private_des.to_string());
+            public_keys.push(public_des.to_string());
+        }
+        Ok((public_keys, private_keys))
     }
 
     /// Generate blocks and send the coinbase reward to a specific address

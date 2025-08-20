@@ -11,7 +11,7 @@ use protocol_builder::{
         InputArgs, OutputType,
     },
 };
-use std::rc::Rc;
+use std::{collections::HashMap, rc::Rc};
 use storage_backend::storage::{KeyValueStore, Storage};
 use tracing::{error, info};
 
@@ -166,7 +166,7 @@ impl Wallet {
         identifier: &str,
         partial_keys: Vec<String>,
         network: bitcoin::Network,
-    ) -> Result<(), WalletError> {
+    ) -> Result<PublicKey, WalletError> {
         if partial_keys.is_empty() {
             error!("No partial private keys provided");
             return Err(WalletError::InvalidPartialPrivateKeys);
@@ -191,7 +191,7 @@ impl Wallet {
 
         self.store.set(key, aggregated_public_key, None)?;
 
-        Ok(())
+        Ok(aggregated_public_key)
     }
 
     pub fn remove_funding(&self, identifier: &str, funding_id: &str) -> Result<(), WalletError> {
@@ -209,6 +209,119 @@ impl Wallet {
         Ok(())
     }
 
+    pub fn merge_utxos(
+        &self,
+        funding_access_data: &HashMap<String, Vec<String>>, 
+        to_pubkey: PublicKey,
+        fee: u64,
+        auto_confirm: bool,
+    ) -> Result<Txid, WalletError> {
+        let mut funding_data = HashMap::new();
+        let mut total_amount = 0;
+        for (identifier, funding_ids) in funding_access_data.iter() {
+            for (i,funding_id) in funding_ids.iter().enumerate() {
+                let key = StoreKey::PendingTransfer(
+                    identifier.to_string(),
+                    funding_id.to_string(),
+                )
+                .get_key();
+
+                if self.store.has_key(&key)? {
+                    return Err(WalletError::TransferInProgress(key));
+                }
+
+                let key = StoreKey::Wallet(identifier.to_string()).get_key();
+                let origin_pubkey: PublicKey = self
+                    .store
+                    .get(&key)?
+                    .ok_or(WalletError::KeyNotFound(identifier.to_string()))?;
+
+                let key_funding =
+                    StoreKey::Funding(identifier.to_string(), funding_id.to_string()).get_key();
+                let (outpoint, origin_amount): (OutPoint, u64) =
+                    self.store
+                        .get(&key_funding)?
+                        .ok_or(WalletError::FundingNotFound(
+                            identifier.to_string(),
+                            funding_id.to_string(),
+                        ))?;
+                funding_data.insert(format!("{origin_pubkey}_{i}"), (origin_pubkey, outpoint, origin_amount));
+                total_amount += origin_amount;
+            }
+        }
+
+        info!("Funding data: {:?}", funding_data);
+        
+        let result = self.create_merge_transaction(to_pubkey, fee, funding_data, total_amount)?;
+
+        let txid = result.compute_txid();
+
+        for (identifier, funding_ids) in funding_access_data.iter() {
+            for funding_id in funding_ids {
+                let pending_key = StoreKey::PendingTransfer(
+                    identifier.to_string(),
+                    funding_id.to_string(),
+                )
+                .get_key();
+                self.store
+                    .set(pending_key, (txid, 0, 0), None)?;
+            }
+        }
+
+        if auto_confirm {
+            for (identifier, funding_ids) in funding_access_data.iter() {
+                for funding_id in funding_ids {
+                    self.confirm_transfer(identifier, funding_id)?;
+                }
+            }
+        }
+        
+        Ok(txid)
+    }
+
+    fn create_merge_transaction(&self, to_pubkey: PublicKey, fee: u64, funding_data: HashMap<String, (PublicKey, OutPoint, u64)>, total_amount: u64) -> Result<Transaction, WalletError> {
+        let mut protocol = Protocol::new("merge_utxos");
+        for (i, (_, (origin_pubkey, outpoint, origin_amount))) in funding_data.iter().enumerate() {
+    
+            info!("Public key: {origin_pubkey}");
+            let external_output = OutputType::segwit_key(*origin_amount, &origin_pubkey)?;
+            info!("External output: {:?}", external_output);
+    
+            let transaction_name = format!("origin{i}");
+            protocol.add_external_transaction(&transaction_name)?;
+            protocol.add_unknown_outputs(&transaction_name, outpoint.vout)?;
+            protocol.add_connection(
+                &format!("merge_{i}"),
+                &transaction_name,
+                external_output.clone().into(),
+                "merge",
+                InputSpec::Auto(SighashType::ecdsa_all(), SpendMode::Segwit),
+                None,
+                Some(outpoint.txid),
+            )?;
+        }
+
+        info!("Amount: {total_amount}");
+        let transfer_output = OutputType::segwit_key(total_amount-fee, &to_pubkey)?;
+        protocol.add_transaction_output("merge", &transfer_output)?;
+        protocol.build_and_sign(&self.key_manager, "id")?;
+        let mut spending_args_vec = Vec::new();
+        for i in 0..funding_data.len(){
+            let signature = protocol.input_ecdsa_signature("merge", i)?.unwrap();
+            let mut spending_args = InputArgs::new_segwit_args();
+            spending_args.push_ecdsa_signature(signature)?;
+            spending_args_vec.push(spending_args);
+        }
+
+        let result = protocol.transaction_to_send("merge", &spending_args_vec)?;
+
+        if let Some(bitcoin_client) = &self.bitcoin_client {
+            bitcoin_client.send_transaction(&result)?;
+        }
+        
+        Ok(result)
+    }
+    
     pub fn fund_address(
         &self,
         identifier: &str,
@@ -323,7 +436,7 @@ impl Wallet {
 
         let mut protocol = Protocol::new("transfer_tx");
         protocol.add_external_transaction("origin")?;
-        protocol.add_unkwnoun_outputs("origin", outpoint.vout)?;
+        protocol.add_unknown_outputs("origin", outpoint.vout)?;
         protocol.add_connection(
             "origin_tx_transfer",
             "origin",
@@ -1071,5 +1184,59 @@ mod tests {
             .iter()
             .any(|(fid, op, amt)| fid == funding_id2 && *op == outpoint2 && *amt == amount2));
         assert_eq!(funds.len(), 2);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_merge_utxos() {
+         let config = clean_and_load_config("config/regtest.yaml").unwrap();
+
+        let bitcoind = Bitcoind::new(
+            "bitcoin-regtest",
+            "ruimarinho/bitcoin-core",
+            config.bitcoin.clone(),
+        );
+
+        bitcoind.start().unwrap();
+
+        let wallet = Wallet::new(config, true).unwrap();
+        wallet.mine(101).unwrap();
+
+
+        let mut funding_access_data = HashMap::new();
+        let wallet_name1 = "wallet_1";
+        let funding_id1 = "fund_1";
+        let funding_id2 = "fund_2";
+        funding_access_data.insert(wallet_name1.to_string(), vec![funding_id1.to_string(), funding_id2.to_string()]);
+        let wallet_name2 = "wallet_2";
+        let funding_id3 = "fund_3";
+        funding_access_data.insert(wallet_name2.to_string(), vec![funding_id3.to_string()]);
+
+        wallet.create_wallet(wallet_name1).unwrap();
+        wallet.create_wallet(wallet_name2).unwrap();
+        wallet.regtest_fund(wallet_name1, funding_id1, 100_000).unwrap();
+        wallet.regtest_fund(wallet_name1, funding_id2, 25_000).unwrap();
+        wallet.regtest_fund(wallet_name2, funding_id3, 50_000).unwrap();
+
+        let funds = wallet.list_funds(wallet_name1).unwrap();
+        assert_eq!(funds.len(), 2);
+        assert_eq!(funds[0].2, 100_000);
+        assert_eq!(funds[1].2, 25_000);
+        let funds = wallet.list_funds(wallet_name2).unwrap();
+        assert_eq!(funds.len(), 1);
+        assert_eq!(funds[0].2, 50_000);
+
+        let to_pubkey = PublicKey::from_str(
+            "038f47dcd43ba6d97fc9ed2e3bba09b175a45fac55f0683e8cf771e8ced4572354",
+        ).unwrap();
+
+
+        wallet.merge_utxos(&funding_access_data, to_pubkey, 1000, true).unwrap();
+
+        let funds = wallet.list_funds(wallet_name1).unwrap();
+        assert_eq!(funds.len(), 0);
+        let funds = wallet.list_funds(wallet_name2).unwrap();
+        assert_eq!(funds.len(), 0);
+
     }
 }

@@ -1,3 +1,44 @@
+//! Core wallet functionality for the BitVMX wallet.
+//! 
+//! This module provides the main `Wallet` struct and related functionality for
+//! Bitcoin wallet operations, including transaction management, blockchain
+//! synchronization, and key management.
+//! 
+//! ## Features
+//! 
+//! - **Transaction Operations**: Send and receive Bitcoin transactions
+//! - **Blockchain Synchronization**: Sync with Bitcoin nodes for latest state
+//! - **Key Management**: Support for various key types and derivation methods
+//! - **Address Generation**: Generate receiving and change addresses
+//! - **Regtest Support**: Testing utilities for development environments
+//! 
+//! ## Examples
+//! 
+//! ```rust
+//! use bitvmx_wallet::{wallet::Wallet, config::WalletConfig};
+//! use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+//! use bitcoin::PublicKey;
+//! 
+//! // Create a wallet from a private key with change descriptor
+//! // Change descriptors allow the wallet to use trusted unconfirmed UTXOs
+//! let wallet = Wallet::from_private_key(
+//!     rpc_config,
+//!     wallet_config,
+//!     "L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o", // receive key
+//!     Some("KxJk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8"), // change key - must be different from receive key
+//! )?;
+//! 
+//! // Sync the wallet
+//! wallet.sync_wallet()?;
+//! 
+//! // Send a transaction
+//! let tx = wallet.send_to_address(
+//!     "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+//!     100000, // 0.001 BTC
+//!     Some(5), // 5 sat/vB fee rate
+//! )?;
+//! ```
+
 #[allow(unused_imports)]
 use crate::{config::WalletConfig, errors::WalletError};
 use bitcoin::{
@@ -22,25 +63,104 @@ use std::{
     path::Path,
     rc::Rc,
     str::FromStr,
-    sync::{mpsc::sync_channel, Arc},
+    sync::{mpsc::channel, Arc},
     thread::spawn, time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
+/// Events that can be emitted during wallet synchronization.
+/// 
+/// This enum represents different types of events that can occur during
+/// blockchain synchronization, including termination signals and blockchain events.
 #[derive(Debug)]
 pub enum Emission {
+    /// Signal termination event (SIGTERM).
+    /// 
+    /// Used to gracefully shut down synchronization processes.
     SigTerm,
+    
+    /// New block event.
+    /// 
+    /// Contains information about a new block that has been added to the blockchain.
     Block(bdk_bitcoind_rpc::BlockEvent<Block>),
+    
+    /// Mempool event.
+    /// 
+    /// Contains information about changes in the transaction mempool.
     Mempool(bdk_bitcoind_rpc::MempoolEvent),
 }
 
+/// A Bitcoin wallet instance with full functionality.
+/// 
+/// The `Wallet` struct provides comprehensive Bitcoin wallet functionality,
+/// including transaction creation, blockchain synchronization, address generation,
+/// and key management. It wraps the BDK wallet library and provides additional
+/// features specific to the BitVMX ecosystem.
+/// 
+/// ## Key Features
+/// 
+/// - **Multiple Key Types**: Support for private keys, derived keypairs, and partial private keys
+/// - **Transaction Management**: Create, sign, and broadcast Bitcoin transactions
+/// - **Blockchain Sync**: Synchronize with Bitcoin nodes for latest blockchain state
+/// - **Address Generation**: Generate receiving and change addresses
+/// - **Persistent Storage**: SQLite-based wallet state persistence
+/// - **Regtest Support**: Testing utilities for development environments
+/// 
+/// ## Examples
+/// 
+/// ```rust
+/// use bitvmx_wallet::wallet::Wallet;
+/// 
+/// // Create a wallet from a private key with change descriptor
+/// // Change descriptors allow the wallet to use trusted unconfirmed UTXOs
+/// let mut wallet = Wallet::from_private_key(
+///     rpc_config,
+///     wallet_config,
+///     "L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o", // receive key
+///     Some("KxJk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8"), // change key - must be different from receive key
+/// )?;
+/// 
+/// // Sync with the blockchain
+/// wallet.sync_wallet()?;
+/// 
+/// // Get wallet balance
+/// let balance = wallet.balance();
+/// println!("Balance: {} sats", balance.confirmed);
+/// 
+/// // Generate a receiving address
+/// let address = wallet.receive_address()?;
+/// println!("Receive address: {}", address);
+/// 
+/// // Send a transaction
+/// let tx = wallet.send_to_address(
+///     "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+///     100000, // 0.001 BTC
+///     Some(5), // 5 sat/vB fee rate
+/// )?;
+/// println!("Transaction sent: {}", tx.compute_txid());
+/// ```
 pub struct Wallet {
+    /// The Bitcoin network this wallet operates on (mainnet, testnet, or regtest).
     pub network: bitcoin::Network,
+    
+    /// RPC client for communicating with the Bitcoin Core node.
     pub rpc_client: Arc<Client>,
+    
+    /// The underlying BDK wallet instance.
     pub bdk_wallet: PersistedWallet<Connection>,
+    
+    /// The public key associated with this wallet.
     pub public_key: PublicKey,
+    
+    /// The name/identifier of this wallet.
     pub name: String,
+    
+    /// The starting block height for wallet synchronization.
     pub start_height: u32,
+    
+    /// Whether the wallet has completed initial synchronization.
     pub is_ready: bool,
+    
+    /// SQLite database connection for wallet persistence.
     conn: Connection,
 }
 
@@ -51,9 +171,42 @@ impl Display for Wallet {
 }
 
 impl Wallet {
-    /// Create a wallet from a public key used to get the private key from the key manager
-    /// Change public key is optional, if not provided, the wallet will be a single descriptor wallet
-    /// and won't be able to spend trusted unconfirmed utxos
+    /// Creates a wallet from a public key by retrieving the private key from the key manager.
+    /// 
+    /// This constructor is useful when you have a public key and want to create a wallet
+    /// using the corresponding private key stored in the key manager.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `bitcoin_config` - Bitcoin network and RPC configuration
+    /// * `wallet_config` - Wallet-specific configuration settings
+    /// * `key_manager` - Key manager instance for key retrieval
+    /// * `public_key` - The public key to use for wallet creation
+    /// * `change_public_key` - Optional public key for change addresses
+    /// 
+    /// # Returns
+    /// 
+    /// A `Result` containing the new `Wallet` instance or an error.
+    /// 
+    /// # Notes
+    /// 
+    /// If no change public key is provided, the wallet will be a single descriptor wallet
+    /// and won't be able to spend trusted unconfirmed UTXOs.
+    /// 
+    /// # Example
+    /// 
+    /// ```rust
+    /// use bitvmx_wallet::wallet::Wallet;
+    /// use bitcoin::PublicKey;
+    /// 
+    /// let wallet = Wallet::from_key_manager(
+    ///     bitcoin_config,
+    ///     wallet_config,
+    ///     key_manager,
+    ///     &public_key,
+    ///     Some(&change_public_key),
+    /// )?;
+    /// ```
     pub fn from_key_manager(
         bitcoin_config: RpcConfig,
         wallet_config: WalletConfig,
@@ -77,9 +230,47 @@ impl Wallet {
         )
     }
 
-    /// Create a wallet from an index to derive the key pair from the key manager
-    /// Change index is optional, if not provided, the wallet will be a single descriptor wallet
-    /// and won't be able to spend trusted unconfirmed utxos
+    /// Creates a wallet by deriving a key pair from the key manager using an index.
+    /// 
+    /// This constructor derives a new key pair from the key manager's master key
+    /// using the specified index, then creates a wallet with that key pair.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `bitcoin_config` - Bitcoin network and RPC configuration
+    /// * `wallet_config` - Wallet-specific configuration settings
+    /// * `key_manager` - Key manager instance for key derivation
+    /// * `index` - The derivation index for the key pair
+    /// * `change_index` - Optional derivation index for change addresses
+    /// 
+    /// # Returns
+    /// 
+    /// A `Result` containing the new `Wallet` instance or an error.
+    /// 
+    /// # Notes
+    /// 
+    /// **Important**: 
+    /// - If no change index is provided, the wallet will be a single descriptor wallet
+    ///   and won't be able to spend trusted unconfirmed UTXOs. This means you cannot use unconfirmed
+    ///   transactions as inputs for new transactions, which can limit the wallet's functionality.
+    /// - The change index must be different from the main key index to avoid address reuse
+    ///   and maintain proper wallet security.
+    /// 
+    /// # Example
+    /// 
+    /// ```rust
+    /// use bitvmx_wallet::wallet::Wallet;
+    /// 
+    /// // Create wallet with change descriptor (recommended)
+/// // This allows using trusted unconfirmed UTXOs
+/// let wallet = Wallet::from_derive_keypair(
+///     bitcoin_config,
+///     wallet_config,
+///     key_manager,
+///     0, // Use index 0 for the main key
+///     Some(1), // Use index 1 for change addresses (must be different from main key)
+/// )?;
+    /// ```
     pub fn from_derive_keypair(
         bitcoin_config: RpcConfig,
         wallet_config: WalletConfig,
@@ -105,9 +296,45 @@ impl Wallet {
         )
     }
 
-    /// Create a wallet from a private key, stores it in the key manager
-    /// Change private key is optional, if not provided, the wallet will be a single descriptor wallet
-    /// and won't be able to spend trusted unconfirmed utxos
+    /// Creates a wallet from a private key and stores it in the key manager.
+    /// 
+    /// This constructor creates a wallet using a provided private key in WIF format.
+    /// The private key is stored in the key manager for future use.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `bitcoin_config` - Bitcoin network and RPC configuration
+    /// * `wallet_config` - Wallet-specific configuration settings
+    /// * `private_key` - Private key in WIF (Wallet Import Format)
+    /// * `change_private_key` - Optional private key for change addresses
+    /// 
+    /// # Returns
+    /// 
+    /// A `Result` containing the new `Wallet` instance or an error.
+    /// 
+    /// # Notes
+    /// 
+    /// **Important**: 
+    /// - If no change private key is provided, the wallet will be a single descriptor wallet
+    ///   and won't be able to spend trusted unconfirmed UTXOs. This means you cannot use unconfirmed
+    ///   transactions as inputs for new transactions, which can limit the wallet's functionality.
+    /// - The change private key must be different from the receive private key to avoid address reuse
+    ///   and maintain proper wallet security.
+    /// 
+    /// # Example
+    /// 
+    /// ```rust
+    /// use bitvmx_wallet::wallet::Wallet;
+    /// 
+    /// // Create wallet with change descriptor (recommended)
+/// // This allows using trusted unconfirmed UTXOs
+/// let wallet = Wallet::from_private_key(
+///     bitcoin_config,
+///     wallet_config,
+///     "L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o", // receive key
+///     Some("KxJk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8"), // change key - must be different from receive key
+/// )?;
+    /// ```
     pub fn from_private_key(
         bitcoin_config: RpcConfig,
         wallet_config: WalletConfig,
@@ -131,10 +358,43 @@ impl Wallet {
         )
     }
 
-     /// Create a wallet from a config file, the receive key in the config file is required, the change key is optional
-     /// Keys need to be in WIF format
-     /// Change key is optional, if not provided, the wallet will be a single descriptor wallet
-     /// and won't be able to spend trusted unconfirmed utxos
+     /// Creates a wallet from configuration file settings.
+     /// 
+     /// This constructor creates a wallet using keys specified in the wallet configuration.
+     /// The receive key is required, while the change key is optional.
+     /// 
+     /// # Arguments
+     /// 
+     /// * `bitcoin_config` - Bitcoin network and RPC configuration
+     /// * `wallet_config` - Wallet configuration containing key information
+     /// 
+     /// # Returns
+     /// 
+     /// A `Result` containing the new `Wallet` instance or an error.
+     /// 
+     /// # Notes
+     /// 
+     /// - Keys must be in WIF (Wallet Import Format)
+     /// - The receive key is required in the configuration
+     /// - **Important**: 
+     ///   - If no change key is provided, the wallet will be a single descriptor wallet
+     ///     and won't be able to spend trusted unconfirmed UTXOs. This means you cannot use unconfirmed
+     ///     transactions as inputs for new transactions, which can limit the wallet's functionality.
+     ///   - The change key must be different from the receive key to avoid address reuse
+     ///     and maintain proper wallet security.
+     /// 
+     /// # Example
+     /// 
+     /// ```rust
+     /// use bitvmx_wallet::wallet::Wallet;
+     /// 
+     /// // Create wallet with change descriptor (recommended)
+/// // This allows using trusted unconfirmed UTXOs
+/// let wallet = Wallet::from_config(
+///     bitcoin_config,
+///     wallet_config, // Contains receive_key and optional change_key (must be different)
+/// )?;
+     /// ```
      pub fn from_config(
         bitcoin_config: RpcConfig,
         wallet_config: WalletConfig,
@@ -152,7 +412,34 @@ impl Wallet {
         )
     }
 
-    /// Create a p2wpkh descriptor using a key from the key manager
+    /// Creates a P2WPKH (Pay-to-Witness-Public-Key-Hash) descriptor.
+    /// 
+    /// This function creates a native SegWit descriptor using a private key in WIF format.
+    /// P2WPKH addresses provide better security and lower transaction fees compared to legacy addresses.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `private_key` - Private key in WIF (Wallet Import Format)
+    /// 
+    /// # Returns
+    /// 
+    /// A `Result` containing the descriptor string or an error.
+    /// 
+    /// # Notes
+    /// 
+    /// The descriptor format follows the Bitcoin descriptor specification:
+    /// - `wpkh()` indicates native SegWit private key in WIF format
+    /// - See [BDK descriptor documentation](https://docs.rs/bdk_wallet/2.0.0/bdk_wallet/macro.descriptor.html)
+    /// - See [Bitcoin descriptor specification](https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md#examples)
+    /// 
+    /// # Example
+    /// 
+    /// ```rust
+    /// let descriptor = Wallet::p2wpkh_descriptor(
+    ///     "L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o"
+    /// )?;
+    /// // Returns: "wpkh(L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o)"
+    /// ```
     fn p2wpkh_descriptor(
         private_key: &str,
     ) -> Result<String, WalletError> {
@@ -162,7 +449,46 @@ impl Wallet {
         Ok(format!("wpkh({private_key})"))
     }
 
-    /// Create a wallet from partial private keys of musig2
+    /// Creates a wallet from partial private keys for MuSig2 multi-signature.
+    /// 
+    /// This constructor creates a wallet using partial private keys that are combined
+    /// to form a complete private key for MuSig2 multi-signature operations.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `bitcoin_config` - Bitcoin network and RPC configuration
+    /// * `wallet_config` - Wallet-specific configuration settings
+    /// * `partial_private_keys` - Vector of partial private keys (hex or WIF format)
+    /// * `key_manager` - Key manager instance for key aggregation
+    /// 
+    /// # Returns
+    /// 
+    /// A `Result` containing the new `Wallet` instance or an error.
+    /// 
+    /// # Notes
+    /// 
+    /// - Partial keys can be provided in hex format (64 characters) or WIF format (52 characters)
+    /// - All keys must be in the same format
+    /// - The keys are aggregated to form a complete private key
+    /// - The resulting wallet uses P2TR (Pay-to-Taproot) addresses
+    /// 
+    /// # Example
+    /// 
+    /// ```rust
+    /// use bitvmx_wallet::wallet::Wallet;
+    /// 
+    /// let partial_keys = vec![
+    ///     "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
+    ///     "fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321".to_string(),
+    /// ];
+    /// 
+    /// let wallet = Wallet::from_partial_keys(
+    ///     bitcoin_config,
+    ///     wallet_config,
+    ///     partial_keys,
+    ///     key_manager,
+    /// )?;
+    /// ```
     pub fn from_partial_keys(
         bitcoin_config: RpcConfig,
         wallet_config: WalletConfig,
@@ -192,7 +518,33 @@ impl Wallet {
         )
     }
 
-    /// Create a p2wpkh descriptor using a key from the key manager
+    /// Creates a P2TR (Pay-to-Taproot) descriptor.
+    /// 
+    /// This function creates a Taproot descriptor using a private key in WIF format.
+    /// P2TR addresses provide the latest Bitcoin address format with enhanced privacy and efficiency.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `private_key` - Private key in WIF (Wallet Import Format)
+    /// 
+    /// # Returns
+    /// 
+    /// A `Result` containing the descriptor string or an error.
+    /// 
+    /// # Notes
+    /// 
+    /// The descriptor format follows the Bitcoin descriptor specification:
+    /// - `tr()` indicates P2TR output with the specified key as internal key
+    /// - See [Bitcoin descriptor specification](https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md#examples)
+    /// 
+    /// # Example
+    /// 
+    /// ```rust
+    /// let descriptor = Wallet::p2tr_descriptor(
+    ///     "L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o"
+    /// )?;
+    /// // Returns: "tr(L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o)"
+    /// ```
     fn p2tr_descriptor(
         private_key: &str,
     ) -> Result<String, WalletError> {
@@ -202,10 +554,51 @@ impl Wallet {
         Ok(format!("tr({private_key})"))
     }
 
-    /// Returns a wallet with initial data persisted to a rusqlite database.
-    /// Note that the descriptor secret keys are not persisted to the database.
-    /// Change descriptor is optional, if not provided, the wallet will be a single descriptor wallet
-    /// and won't be able to spend trusted unconfirmed utxos
+    /// Creates a new wallet instance with initial data persisted to a SQLite database.
+    /// 
+    /// This is the main constructor that initializes a wallet with the provided
+    /// configuration and descriptors. The wallet data is persisted to a SQLite database
+    /// for state management and recovery.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `bitcoin_config` - Bitcoin network and RPC configuration
+    /// * `wallet_config` - Wallet-specific configuration settings
+    /// * `public_key` - The public key associated with this wallet
+    /// * `descriptor` - Bitcoin output descriptor for receiving addresses
+    /// * `change_descriptor` - Optional descriptor for change addresses
+    /// 
+    /// # Returns
+    /// 
+    /// A `Result` containing the new `Wallet` instance or an error.
+    /// 
+    /// # Notes
+    /// 
+    /// - Descriptor secret keys are not persisted to the database for security
+    /// - **Important**: 
+    ///   - If no change descriptor is provided, the wallet will be a single descriptor wallet
+    ///     and won't be able to spend trusted unconfirmed UTXOs. This means you cannot use unconfirmed
+    ///     transactions as inputs for new transactions, which can limit the wallet's functionality.
+    ///   - The change descriptor must be different from the receive descriptor to avoid address reuse
+    ///     and maintain proper wallet security.
+    /// - The database directory is created automatically if it doesn't exist
+    /// 
+    /// # Example
+    /// 
+    /// ```rust
+    /// use bitvmx_wallet::wallet::Wallet;
+    /// use bitcoin::PublicKey;
+    /// 
+    /// // Create wallet with change descriptor (recommended)
+/// // This allows using trusted unconfirmed UTXOs
+/// let wallet = Wallet::new(
+///     bitcoin_config,
+///     wallet_config,
+///     &public_key,
+///     "wpkh(L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o)", // receive descriptor
+///     Some("wpkh(KxJk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8)"), // change descriptor - must be different from receive
+/// )?;
+    /// ```
     pub fn new(
         bitcoin_config: RpcConfig,
         wallet_config: WalletConfig,
@@ -298,10 +691,42 @@ impl Wallet {
         Ok(wallet)
     }
 
+    /// Returns the current wallet balance.
+    /// 
+    /// This method returns the wallet's balance information including confirmed,
+    /// unconfirmed, and immature balances.
+    /// 
+    /// # Returns
+    /// 
+    /// A `Balance` struct containing the wallet's balance information.
+    /// 
+    /// # Example
+    /// 
+    /// ```rust
+    /// let balance = wallet.balance();
+    /// println!("Confirmed: {} sats", balance.confirmed);
+    /// println!("Unconfirmed: {} sats", balance.unconfirmed);
+    /// println!("Immature: {} sats", balance.immature);
+    /// ```
     pub fn balance(&self) -> Balance {
         self.bdk_wallet.balance()
     }
 
+    /// Generates a new receiving address for the wallet.
+    /// 
+    /// This method generates the next unused receiving address from the wallet's
+    /// external keychain. The address is marked as used and the wallet state is persisted.
+    /// 
+    /// # Returns
+    /// 
+    /// A `Result` containing the new receiving address or an error.
+    /// 
+    /// # Example
+    /// 
+    /// ```rust
+    /// let address = wallet.receive_address()?;
+    /// println!("New receiving address: {}", address);
+    /// ```
     pub fn receive_address(&mut self) -> Result<Address, WalletError> {
         let address_info = self.bdk_wallet.reveal_next_address(KeychainKind::External);
         // Mark previous address as used for receiving and persist to sqlite database.
@@ -309,6 +734,31 @@ impl Wallet {
         Ok(address_info.address)
     }
 
+    /// Creates and signs a transaction to send funds to a specific address.
+    /// 
+    /// This method creates a transaction that sends the specified amount to the given address.
+    /// The transaction is signed but not broadcast to the network.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `to_address` - The destination Bitcoin address
+    /// * `amount` - Amount to send in satoshis
+    /// * `fee_rate` - Optional fee rate in satoshis per virtual byte
+    /// 
+    /// # Returns
+    /// 
+    /// A `Result` containing the signed transaction or an error.
+    /// 
+    /// # Example
+    /// 
+    /// ```rust
+    /// let tx = wallet.send_to_address_tx(
+    ///     "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+    ///     100000, // 0.001 BTC
+    ///     Some(5), // 5 sat/vB fee rate
+    /// )?;
+    /// println!("Transaction created: {}", tx.compute_txid());
+    /// ```
     pub fn send_to_address_tx(
         &mut self,
         to_address: &str,
@@ -340,6 +790,31 @@ impl Wallet {
         Ok(tx)
     }
 
+    /// Sends funds to a specific address and broadcasts the transaction.
+    /// 
+    /// This method creates, signs, and broadcasts a transaction to send funds
+    /// to the specified address. The wallet is updated with the unconfirmed transaction.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `to_address` - The destination Bitcoin address
+    /// * `amount` - Amount to send in satoshis
+    /// * `fee_rate` - Optional fee rate in satoshis per virtual byte
+    /// 
+    /// # Returns
+    /// 
+    /// A `Result` containing the broadcast transaction or an error.
+    /// 
+    /// # Example
+    /// 
+    /// ```rust
+    /// let tx = wallet.send_to_address(
+    ///     "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+    ///     100000, // 0.001 BTC
+    ///     Some(5), // 5 sat/vB fee rate
+    /// )?;
+    /// println!("Transaction sent: {}", tx.compute_txid());
+    /// ```
     pub fn send_to_address(
         &mut self,
         to_address: &str,
@@ -491,15 +966,20 @@ impl Wallet {
     pub fn sync_wallet_multi_thread(&mut self) -> Result<u64, WalletError> {
         let start_sync = Instant::now();
         info!("Syncing wallet with multi thread ...");
-        let (sender, receiver) = sync_channel::<Emission>(21);
+        let (sender, receiver) = channel::<Emission>();
+        let sender = Arc::new(sender);
 
-        let signal_sender = sender.clone();
-        let _ = ctrlc::set_handler(move || {
-            signal_sender
-                .send(Emission::SigTerm)
-                .expect("Sync wallet error: failed to send SIGTERM")
-        });
+        // Handle SIGTERM
+        {
+            let signal_sender = Arc::clone(&sender);
+            let _ = ctrlc::set_handler(move || {
+                signal_sender
+                    .send(Emission::SigTerm)
+                    .expect("Sync wallet error: failed to send SIGTERM")
+            });
+        } // <- signal_sender is destroyed when exiting the block
 
+        // Create the emitter (producer) thread
         let mut emitter = self.create_emitter();
         let emitter_handle = spawn(move || -> Result<(), WalletError> {
             while let Some(emission) = emitter.next_block()? {
@@ -509,25 +989,29 @@ impl Wallet {
             Ok(())
         });
  
+        // Consumer thread
         let mut blocks_received = 0_u64;
-        for emission in receiver {
-            match emission {
-                Emission::SigTerm => {
-                    info!("SIGTERM received, exiting...");
-                    break;
-                }
-                Emission::Block(block_emission) => {
-                    blocks_received += 1;
-                    self.sync_block(block_emission)?;
-                }
-                Emission::Mempool(event) => {
-                    self.sync_mempool(event)?;
-                    break;
+        {
+            for emission in receiver {
+                match emission {
+                    Emission::SigTerm => {
+                        panic!("SIGTERM received, exiting...");
+                    }
+                    Emission::Block(block_emission) => {
+                        blocks_received += 1;
+                        self.sync_block(block_emission)?;
+                    }
+                    Emission::Mempool(event) => {
+                        self.sync_mempool(event)?;
+                        break;
+                    }
                 }
             }
-        }
+        } // <- receiver is destroyed when exiting the block
+
+        // Wait for emitter thread to finish and check for errors
         match emitter_handle.join() {
-            Ok(_) => {
+            Ok(Ok(_)) => {
                 info!(
                     "Synced wallet with multi thread: {} blocks and mempool in {}s",
                     blocks_received,
@@ -536,6 +1020,7 @@ impl Wallet {
                 self.is_ready = true;
                 Ok(blocks_received)
             },
+            Ok(Err(e)) => Err(e),
             Err(e) => { 
                 Err(WalletError::ThreadPanicked(format!("Sync wallet error: Emitter thread panicked with: {e:?}")))
             }

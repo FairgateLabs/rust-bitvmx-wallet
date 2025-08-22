@@ -19,7 +19,7 @@ const COINBASE_AMOUNT: u64 = 50;
 
 
 #[test]
-#[ignore]
+//#[ignore]
 fn test_bdk_wallet_sync_wallet() -> Result<(), anyhow::Error> {
     let config = clean_and_load_config("config/regtest.yaml")?;
 
@@ -37,24 +37,32 @@ fn test_bdk_wallet_sync_wallet() -> Result<(), anyhow::Error> {
     )?;
 
     let result  =  wallet.tick();
-    assert!(result.is_err(), "Tick one block to a invalid Bitcoin node should throw an error");
+    assert!(result.is_err(), "Tick one block to invalid Bitcoin node should throw an error");
     let error_description = result.unwrap_err().to_string();
     assert!(
         error_description.contains("Couldn't connect to host: Connection refused"), 
         "Error should contain: Couldn't connect to host: Connection refused, got: {}", 
-        error_description
+        format!("Excpected tick error: {:?}", error_description)
     );
 
     let result  =  wallet.sync_wallet();
-    assert!(result.is_err(), "Sync one block to a invalid Bitcoin node should throw an error");
+    assert!(result.is_err(), "Sync one block to invalid Bitcoin node should throw an error");
     let error_description = result.unwrap_err().to_string();
     assert!(
         error_description.contains("Couldn't connect to host: Connection refused"), 
         "Error should contain:Couldn't connect to host: Connection refused, got: {}", 
-        error_description
+        format!("Excpected sync wallet error: {:?}", error_description)
     );
 
-    // TODO fix errors inside thread for sync_wallet_multi_thread
+    // TODO: Fix wallet error when using multi thread sync
+    // let result  =  wallet.sync_wallet_multi_thread();
+    // assert!(result.is_err(), "Sync multi thread to invalid Bitcoin node should throw an error");
+    // let error_description = result.unwrap_err().to_string();
+    // assert!(
+    //     error_description.contains("Couldn't connect to host: Connection refused"), 
+    //     "Error should contain:Couldn't connect to host: Connection refused, got: {}", 
+    //     format!("Excpected sync wallet multi thread error: {:?}", error_description)
+    // );
 
     // Test successfull sync
     // Start a Bitcoin node

@@ -47,3 +47,11 @@ pub mod config;
 pub mod errors;
 pub mod wallet;
 pub mod wallet_manager;
+
+// re-export bdk_bitcoind_rpc
+pub use bdk_bitcoind_rpc;
+
+// re-export bdk_wallet
+pub use bdk_wallet;
+
+

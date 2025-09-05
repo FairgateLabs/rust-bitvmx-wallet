@@ -48,7 +48,7 @@ use bitcoin::{
 use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
 use key_manager::key_manager::KeyManager;
 use protocol_builder::scripts::{self, ProtocolScript};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 
 use bdk_bitcoind_rpc::{
     bitcoincore_rpc::{Auth, Client, RpcApi}, BlockEvent, Emitter, MempoolEvent
@@ -1101,7 +1101,7 @@ impl Wallet {
         self.bdk_wallet.apply_evicted_txs(mempool_emission.evicted);
         self.bdk_wallet.apply_unconfirmed_txs(mempool_emission.update);
         self.persist_wallet()?;
-        debug!("Applied evicted and unconfirmed transactions");
+        trace!("Applied evicted and unconfirmed transactions");
         Ok(())  
     }
 

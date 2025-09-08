@@ -52,7 +52,7 @@ use protocol_builder::scripts::{self, ProtocolScript};
 use tracing::{debug, error, info, trace};
 
 use bdk_bitcoind_rpc::{
-    bitcoincore_rpc::{jsonrpc, Auth, Client, RpcApi},
+    bitcoincore_rpc::{jsonrpc, Client, RpcApi},
     BlockEvent, Emitter, MempoolEvent,
 };
 use bdk_wallet::{

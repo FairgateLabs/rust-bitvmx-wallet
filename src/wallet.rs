@@ -211,7 +211,7 @@ impl Wallet {
 
     pub fn merge_utxos(
         &self,
-        funding_access_data: &HashMap<String, Vec<String>>, 
+        funding_access_data: HashMap<String, Vec<String>>, 
         to_pubkey: PublicKey,
         fee: u64,
         auto_confirm: bool,

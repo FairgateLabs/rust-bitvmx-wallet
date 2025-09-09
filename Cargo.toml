@@ -9,16 +9,13 @@ rust-bitvmx-storage-backend = { path = "../rust-bitvmx-storage-backend" }
 bitvmx-bitcoin-rpc = { path = "../rust-bitvmx-bitcoin-rpc" }
 bitvmx-key-manager = { path = "../rust-bitvmx-key-manager" }
 bitvmx-settings = { path = "../rust-bitvmx-settings" }
-bitcoind = { path = "../rust-bitcoind" }
 thiserror = "2.0.12"
 bitcoin = { version = "^0.32.6", features = ["std", "rand-std"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 serde = "1.0.204"
 anyhow = "1.0.89"
-dotenvy = "0.15.0"
 clap = { version = "4.5", features = ["derive"] }
 
 [dev-dependencies]
 bitcoind = { path = "../rust-bitcoind" }
-musig2 = { version = "0.2.3", features = ["serde", "rand"] }

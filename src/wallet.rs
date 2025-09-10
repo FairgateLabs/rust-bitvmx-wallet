@@ -844,6 +844,10 @@ impl Wallet {
     ) -> Result<Transaction, WalletError> {
         let tx = self.send_to_address_tx(vec![to_address], vec![amount], fee_rate)?;
         // Broadcast the transaction and update the wallet with the unconfirmed transaction
+        info!(
+            "send_to_address: Broadcasting transaction: {}",
+            tx.compute_txid()
+        );
         self.send_transaction(&tx)?;
         Ok(tx)
     }

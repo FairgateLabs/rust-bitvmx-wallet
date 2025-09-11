@@ -61,6 +61,7 @@ use bdk_wallet::{
     TxBuilder, TxOrdering, Wallet as BdkWallet, WalletTx,
 };
 use ctrlc;
+use serde::{Deserialize, Serialize};
 use std::{
     fmt::{self, Display},
     fs,
@@ -92,6 +93,13 @@ pub enum Emission {
     ///
     /// Contains information about changes in the transaction mempool.
     Mempool(bdk_bitcoind_rpc::MempoolEvent),
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub enum Destination {
+    Address(String, u64),   // (address, amount in sats)
+    P2WPKH(PublicKey, u64), // (pubkey, amount in sats)
+    Batch(Vec<Destination>),
 }
 
 /// A Bitcoin wallet instance with full functionality.
@@ -778,6 +786,7 @@ impl Wallet {
     /// )?;
     /// println!("Transaction created: {}", tx.compute_txid());
     /// ```
+    // TODO: should we do it private? Only make public send_funds and create_tx?
     pub fn send_to_address_tx(
         &mut self,
         to_addresses: Vec<&str>,
@@ -811,6 +820,80 @@ impl Wallet {
         Ok(tx)
     }
 
+    fn process_batch(
+        batch: Vec<Destination>,
+        network: Network,
+    ) -> Result<(Vec<String>, Vec<u64>), WalletError> {
+        if batch.is_empty() {
+            return Ok((Vec::new(), Vec::new()));
+        }
+        let mut addresses: Vec<String> = Vec::new();
+        let mut amounts: Vec<u64> = Vec::new();
+
+        for dest in batch {
+            match dest {
+                Destination::Address(addr, amount) => {
+                    addresses.push(addr);
+                    amounts.push(amount);
+                }
+                Destination::P2WPKH(pubkey, amount) => {
+                    let addr = Wallet::pub_key_to_p2wpk(&pubkey, network)?;
+                    addresses.push(addr.to_string());
+                    amounts.push(amount);
+                }
+                Destination::Batch(nested_batch) => {
+                    let (nested_addresses, nested_amounts) =
+                        Wallet::process_batch(nested_batch, network)?;
+                    addresses.extend(nested_addresses);
+                    amounts.extend(nested_amounts);
+                }
+            }
+        }
+
+        Ok((addresses, amounts))
+    }
+
+    pub fn create_tx(
+        &mut self,
+        destination: Destination,
+        fee_rate: Option<u64>,
+    ) -> Result<Transaction, WalletError> {
+        match destination {
+            Destination::Address(address, amount) => {
+                self.send_to_address_tx(vec![address.as_str()], vec![amount], fee_rate)
+            }
+            Destination::P2WPKH(pubkey, amount) => {
+                let address = Wallet::pub_key_to_p2wpk(&pubkey, self.network)?;
+                self.send_to_address_tx(vec![address.as_str()], vec![amount], fee_rate)
+            }
+            Destination::Batch(batch) => {
+                let (addresses, amounts): (Vec<String>, Vec<u64>) =
+                    Wallet::process_batch(batch, self.network)?;
+
+                self.send_to_address_tx(
+                    addresses.iter().map(|address| address.as_str()).collect(),
+                    amounts,
+                    fee_rate,
+                )
+            }
+        }
+    }
+
+    pub fn send_funds(
+        &mut self,
+        destination: Destination,
+        fee_rate: Option<u64>,
+    ) -> Result<Transaction, WalletError> {
+        let tx = self.create_tx(destination, fee_rate)?;
+        // Broadcast the transaction and update the wallet with the unconfirmed transaction
+        info!(
+            "send_funds: Broadcasting transaction: {}",
+            tx.compute_txid()
+        );
+        self.send_transaction(&tx)?;
+        Ok(tx)
+    }
+
     /// Sends funds to a specific address and broadcasts the transaction.
     ///
     /// This method creates, signs, and broadcasts a transaction to send funds
@@ -836,6 +919,7 @@ impl Wallet {
     /// )?;
     /// println!("Transaction sent: {}", tx.compute_txid());
     /// ```
+    // TODO: should we do it private? Only make public send_funds and create_tx?
     pub fn send_to_address(
         &mut self,
         to_address: &str,
@@ -897,6 +981,7 @@ impl Wallet {
     ///     Err(e) => eprintln!("Failed to send: {}", e),
     /// }
     /// ```
+    // TODO: should we do it private? Only make public send_funds and create_tx?
     pub fn send_to_many_addresses(
         &mut self,
         to_addresses: Vec<&str>,
@@ -961,6 +1046,7 @@ impl Wallet {
     ///     Err(e) => eprintln!("Failed to send to P2WPKH: {}", e),
     /// }
     /// ```
+    // TODO: should we do it private? Only make public send_funds and create_tx?
     pub fn send_to_p2wpkh(
         &mut self,
         public_key: &PublicKey,
@@ -1020,6 +1106,7 @@ impl Wallet {
     ///     Err(e) => eprintln!("Failed to send to multiple P2WPKH: {}", e),
     /// }
     /// ```
+    // TODO: should we do it private? Only make public send_funds and create_tx?
     pub fn send_to_many_p2wpkh(
         &mut self,
         public_keys: Vec<&PublicKey>,

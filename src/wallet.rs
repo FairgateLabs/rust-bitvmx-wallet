@@ -100,6 +100,7 @@ pub enum Destination {
     Address(String, u64),   // (address, amount in sats)
     P2WPKH(PublicKey, u64), // (pubkey, amount in sats)
     Batch(Vec<Destination>),
+    P2TR(XOnlyPublicKey, Vec<ProtocolScript>, u64), // (xpubkey, tap_leaves, amount in sats)
 }
 
 /// A Bitcoin wallet instance with full functionality.
@@ -846,6 +847,11 @@ impl Wallet {
                     addresses.extend(nested_addresses);
                     amounts.extend(nested_amounts);
                 }
+                Destination::P2TR(x_public_key, tap_leaves, amount) => {
+                    let address = Wallet::pub_key_to_p2tr(&x_public_key, &tap_leaves, network)?;
+                    addresses.push(address.to_string());
+                    amounts.push(amount);
+                }
             }
         }
 
@@ -934,6 +940,10 @@ impl Wallet {
                     fee_rate,
                 )
             }
+            Destination::P2TR(x_public_key, tap_leaves, amount) => {
+                let address = Wallet::pub_key_to_p2tr(&x_public_key, &tap_leaves, self.network)?;
+                self.send_to_address_tx(vec![address.to_string().as_str()], vec![amount], fee_rate)
+            }
         }
     }
 
@@ -1021,17 +1031,17 @@ impl Wallet {
     }
 
     pub fn pub_key_to_p2tr(
-        &mut self,
         x_public_key: &XOnlyPublicKey,
         tap_leaves: &[ProtocolScript],
+        network: Network,
     ) -> Result<Address, WalletError> {
         let tap_spend_info = scripts::build_taproot_spend_info(
-            self.bdk_wallet.secp_ctx(),
+            &Secp256k1::new(),
             x_public_key,
             tap_leaves,
         )?;
         let script = ScriptBuf::new_p2tr_tweaked(tap_spend_info.output_key());
-        let address = Address::from_script(&script, self.network)?;
+        let address = Address::from_script(&script, network)?;
         Ok(address)
     }
 
@@ -1042,7 +1052,7 @@ impl Wallet {
         amount: u64,
         fee_rate: Option<u64>,
     ) -> Result<Transaction, WalletError> {
-        let address = self.pub_key_to_p2tr(x_public_key, tap_leaves)?;
+        let address = Wallet::pub_key_to_p2tr(x_public_key, tap_leaves, self.network)?;
         let tx = self.send_funds(Destination::Address(address.to_string(), amount), fee_rate)?;
         Ok(tx)
     }
@@ -1421,7 +1431,7 @@ impl RegtestWallet for Wallet {
         tap_leaves: &[ProtocolScript],
         amount: u64,
     ) -> Result<Transaction, WalletError> {
-        let address = self.pub_key_to_p2tr(x_public_key, tap_leaves)?;
+        let address = Wallet::pub_key_to_p2tr(x_public_key, tap_leaves, self.network)?;
         let tx = self.fund_destination(Destination::Address(address.to_string(), amount))?;
         Ok(tx)
     }

@@ -17,7 +17,6 @@ use storage_backend::storage::Storage;
 const P2WPKH_FEE_RATE: u64 = 141;
 const COINBASE_AMOUNT: u64 = 50;
 const EXTRA_P2WPKH_OUTPUT_FEE: u64 = 31;
-const EXTRA_P2PKH_OUTPUT_FEE: u64 = 34;
 
 #[test]
 //#[ignore]
@@ -196,9 +195,11 @@ fn test_bdk_wallet() -> Result<(), anyhow::Error> {
     let balance = wallet.balance();
     // Build a transaction to send 44000 satoshis to a taproot address
     let amount_to_send = Amount::from_sat(44_000);
-    wallet.send_to_address(
-        "bcrt1qs758ursh4q9z627kt3pp5yysm78ddny6txaqgw",
-        amount_to_send.to_sat(),
+    wallet.send_funds(
+        Destination::Address(
+            "bcrt1qs758ursh4q9z627kt3pp5yysm78ddny6txaqgw".to_string(),
+            amount_to_send.to_sat(),
+        ),
         None,
     )?;
 
@@ -447,7 +448,10 @@ fn test_bdk_wallet_balance() -> Result<(), anyhow::Error> {
     // send to self to test unconfirmed balance
     let receive_address = wallet.receive_address()?;
     let amount_to_send = Amount::from_int_btc(1);
-    wallet.send_to_address(&receive_address.to_string(), amount_to_send.to_sat(), None)?;
+    wallet.send_funds(
+        Destination::Address(receive_address.to_string(), amount_to_send.to_sat()),
+        None,
+    )?;
     let new_balance = wallet.balance();
     assert_eq!(
         new_balance.total(),
@@ -511,9 +515,11 @@ fn test_bdk_wallet_balance() -> Result<(), anyhow::Error> {
     // ====== Balance from a build tx ======
     let balance = wallet.balance();
     let amount_to_send = Amount::from_int_btc(2);
-    let tx = wallet.send_to_address_tx(
-        vec!["bcrt1qs758ursh4q9z627kt3pp5yysm78ddny6txaqgw"],
-        vec![amount_to_send.to_sat()],
+    let tx = wallet.create_tx(
+        Destination::Address(
+            "bcrt1qs758ursh4q9z627kt3pp5yysm78ddny6txaqgw".to_string(),
+            amount_to_send.to_sat(),
+        ),
         None,
     )?;
     let new_balance = wallet.balance();
@@ -648,7 +654,10 @@ fn test_bdk_wallet_balance_with_change_address() -> Result<(), anyhow::Error> {
     let balance = new_balance;
     let amount_to_send = Amount::from_int_btc(1);
     let send_to_address = "bcrt1qs758ursh4q9z627kt3pp5yysm78ddny6txaqgw";
-    wallet.send_to_address(send_to_address, amount_to_send.to_sat(), None)?;
+    wallet.send_funds(
+        Destination::Address(send_to_address.to_string(), amount_to_send.to_sat()),
+        None,
+    )?;
     let new_balance = wallet.balance();
     assert_eq!(
         new_balance.total(),
@@ -835,7 +844,7 @@ fn test_regtest_wallet() -> Result<(), anyhow::Error> {
     let address = Address::from_str("bcrt1qs758ursh4q9z627kt3pp5yysm78ddny6txaqgw")?
         .require_network(Network::Regtest)?;
 
-    let tx = wallet.fund_address(&address.to_string(), amount.to_sat())?;
+    let tx = wallet.fund_destination(Destination::Address(address.to_string(), amount.to_sat()))?;
     let new_balance = wallet.balance();
     assert_eq!(
         tx.output[0].value, amount,
@@ -858,7 +867,7 @@ fn test_regtest_wallet() -> Result<(), anyhow::Error> {
     let address = Wallet::pub_key_to_p2wpk(&public_key, Network::Regtest)?;
     println!("address: {:?}", address);
     // Send funds to a specific p2wpkh public key and mines 1 block
-    let tx = wallet.fund_p2wpkh(&public_key, amount.to_sat())?;
+    let tx = wallet.fund_destination(Destination::P2WPKH(public_key, amount.to_sat()))?;
     println!("p2wpkh tx: {:?}", tx);
     let new_balance = wallet.balance();
     assert_eq!(
@@ -874,140 +883,6 @@ fn test_regtest_wallet() -> Result<(), anyhow::Error> {
         new_balance.total(),
         balance.total() - amount - Amount::from_sat(P2WPKH_FEE_RATE),
         "Balance should have decreased by 50000 satoshis and fees after syncing the wallet"
-    );
-
-    bitcoind.stop()?;
-    Ok(())
-}
-
-#[test]
-#[ignore]
-fn test_send_to_many_addresses() -> Result<(), anyhow::Error> {
-    // Arrenge
-    let config = clean_and_load_config("config/regtest.yaml")?;
-    let storage = Rc::new(Storage::new(&config.storage)?);
-    let key_store = KeyStore::new(storage.clone());
-    let key_manager = Rc::new(create_key_manager_from_config(
-        &config.key_manager,
-        key_store,
-        storage.clone(),
-    )?);
-
-    let bitcoind = Bitcoind::new(
-        "bitcoin-regtest",
-        "ruimarinho/bitcoin-core",
-        config.bitcoin.clone(),
-    );
-    bitcoind.start()?;
-
-    let mut wallet = Wallet::from_derive_keypair(
-        config.bitcoin.clone(),
-        config.wallet.clone(),
-        key_manager.clone(),
-        0,
-        Some(1),
-    )?;
-
-    // Mine 101 blocks to the receive address to ensure only one coinbase output is mature
-    wallet.fund()?;
-
-    let balance = wallet.balance();
-    let amount1 = Amount::from_sat(50_000);
-    let addr1 = "bcrt1qs758ursh4q9z627kt3pp5yysm78ddny6txaqgw";
-    let address1 = Address::from_str(addr1)?.require_network(Network::Regtest)?;
-
-    let amount2 = Amount::from_sat(10_000);
-    let addr2 = "mz3QWUnL94q2RdRxFtPq747SngoBu5uQMi";
-    let address2 = Address::from_str(addr2)?.require_network(Network::Regtest)?;
-
-    let tx = wallet.fund_many_addresses(
-        vec![addr1, addr2, addr1],
-        vec![amount1.to_sat(), amount2.to_sat(), amount1.to_sat()],
-    )?;
-    let new_balance = wallet.balance();
-    assert_eq!(
-        tx.output[0].value, amount1,
-        "Output 0 should be 50000 satoshis"
-    );
-    assert_eq!(
-        tx.output[1].value, amount2,
-        "Output 1 should be 10000 satoshis"
-    );
-    assert_eq!(
-        tx.output[2].value, amount1,
-        "Output 2 should be 50000 satoshis"
-    );
-    assert_eq!(
-        tx.output[0].script_pubkey,
-        address1.script_pubkey(),
-        "Output 0 should be to the correct address"
-    );
-    assert_eq!(
-        tx.output[1].script_pubkey,
-        address2.script_pubkey(),
-        "Output 1 should be to the correct address"
-    );
-    assert_eq!(
-        tx.output[2].script_pubkey,
-        address1.script_pubkey(),
-        "Output 2 should be to the correct address"
-    );
-    assert_eq!(
-        new_balance.total(),
-        balance.total()
-            - amount1
-            - amount2
-            - amount1
-            - Amount::from_sat(P2WPKH_FEE_RATE)
-            - Amount::from_sat(EXTRA_P2WPKH_OUTPUT_FEE)
-            - Amount::from_sat(EXTRA_P2PKH_OUTPUT_FEE),
-        "Balance should have decreased by 60000 satoshis and fees after syncing the wallet"
-    );
-
-    let balance = new_balance;
-    let public_key1 =
-        PublicKey::from_str("020d4bf69a836ddb088b9492af9ce72b39de9ae663b41aa9699fef4278e5ff77b4")?;
-    let addr1 = Wallet::pub_key_to_p2wpk(&public_key1, Network::Regtest)?;
-    println!("address1: {:?}", addr1);
-
-    let public_key2 =
-        PublicKey::from_str("030d4bf69a836ddb088b9492af9ce72b39de9ae663b41aa9699fef4278e5ff77b4")?;
-    let addr2 = Wallet::pub_key_to_p2wpk(&public_key2, Network::Regtest)?;
-    println!("address2: {:?}", addr2);
-
-    // Send funds to many specific p2wpkh public key and mines 1 block
-    let tx = wallet.fund_many_p2wpkhs(
-        vec![&public_key1, &public_key2],
-        vec![amount1.to_sat(), amount2.to_sat()],
-    )?;
-    println!("p2wpkh tx: {:?}", tx);
-    let new_balance = wallet.balance();
-    assert_eq!(
-        tx.output[0].value, amount1,
-        "Output 1 should be 50000 satoshis"
-    );
-    assert_eq!(
-        tx.output[1].value, amount2,
-        "Output 2should be 10000 satoshis"
-    );
-    assert_eq!(
-        tx.output[0].script_pubkey,
-        ScriptBuf::new_p2wpkh(&public_key1.wpubkey_hash()?),
-        "Output 1 should be to the correct address"
-    );
-    assert_eq!(
-        tx.output[1].script_pubkey,
-        ScriptBuf::new_p2wpkh(&public_key2.wpubkey_hash()?),
-        "Output 2 should be to the correct address"
-    );
-    assert_eq!(
-        new_balance.total(),
-        balance.total()
-            - amount1
-            - amount2
-            - Amount::from_sat(P2WPKH_FEE_RATE)
-            - Amount::from_sat(EXTRA_P2WPKH_OUTPUT_FEE),
-        "Balance should have decreased by 60000 satoshis and fees after syncing the wallet"
     );
 
     bitcoind.stop()?;

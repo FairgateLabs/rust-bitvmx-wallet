@@ -786,8 +786,7 @@ impl Wallet {
     /// )?;
     /// println!("Transaction created: {}", tx.compute_txid());
     /// ```
-    // TODO: should we do it private? Only make public send_funds and create_tx?
-    pub fn send_to_address_tx(
+    fn send_to_address_tx(
         &mut self,
         to_addresses: Vec<&str>,
         amounts: Vec<u64>,
@@ -853,6 +852,65 @@ impl Wallet {
         Ok((addresses, amounts))
     }
 
+    /// Creates a Bitcoin transaction to a specified destination without broadcasting it.
+    ///
+    /// This method constructs a transaction based on the provided [`Destination`], which
+    /// can be a single address, a P2WPKH public key, or a batch of multiple destinations.
+    /// Unlike [`send_funds`](#method.send_funds), this function does not broadcast the
+    /// transaction to the Bitcoin network—it only creates and returns the transaction object.
+    ///
+    /// # Arguments
+    ///
+    /// * `destination` - A [`Destination`] enum specifying where to send funds:
+    ///   - `Destination::Address(String, u64)` — send to a raw Bitcoin address and amount (in satoshis).
+    ///   - `Destination::P2WPKH(PublicKey, u64)` — convert a public key into a P2WPKH address and send the specified amount.
+    ///   - `Destination::Batch(Vec<Destination>)` — recursively process a batch of multiple destinations.
+    /// * `fee_rate` - Optional fee rate in satoshis per virtual byte. If `None`,
+    ///   the wallet will use its default fee estimation.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing:
+    /// * `Ok(Transaction)` - The constructed transaction ready to be signed and broadcasted
+    /// * `Err(WalletError)` - If address conversion fails, insufficient funds,
+    ///   invalid inputs, or other wallet operations fail
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// * The provided address is invalid
+    /// * A public key cannot be converted into a valid P2WPKH address
+    /// * The wallet does not have sufficient funds to cover the amounts and fees
+    /// * The batch destination contains invalid entries
+    /// * The fee rate is invalid
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// # use rust_bitvmx_wallet::{Wallet, Destination};
+    /// # use bitcoin::PublicKey;
+    /// # let mut wallet = Wallet::new(/* ... */).unwrap();
+    ///
+    /// // Send 50,000 sats to a raw address
+    /// let destination = Destination::Address("bcrt1qxyz...".to_string(), 50_000);
+    /// let tx = wallet.create_tx(destination, Some(5)).unwrap();
+    /// println!("Created transaction: {}", tx.txid());
+    ///
+    /// // Send to a P2WPKH derived from a public key
+    /// # let pubkey = PublicKey::from_str("...").unwrap();
+    /// let destination = Destination::P2WPKH(pubkey, 75_000);
+    /// let tx = wallet.create_tx(destination, None).unwrap();
+    /// println!("Created P2WPKH transaction: {}", tx.txid());
+    ///
+    /// // Send to multiple destinations in a batch
+    /// let batch = vec![
+    ///     Destination::Address("bcrt1qabc...".to_string(), 25_000),
+    ///     Destination::P2WPKH(pubkey, 10_000),
+    /// ];
+    /// let destination = Destination::Batch(batch);
+    /// let tx = wallet.create_tx(destination, Some(3)).unwrap();
+    /// println!("Created batch transaction: {}", tx.txid());
+    /// ```
     pub fn create_tx(
         &mut self,
         destination: Destination,
@@ -879,6 +937,65 @@ impl Wallet {
         }
     }
 
+    /// Creates and broadcasts a Bitcoin transaction to the specified destination.
+    ///
+    /// This method builds a transaction based on the provided [`Destination`], signs it
+    /// with the wallet's available UTXOs, and broadcasts it to the Bitcoin network.
+    /// Unlike [`create_tx`](#method.create_tx), which only constructs a transaction object,
+    /// this function finalizes and submits the transaction for propagation.
+    ///
+    /// # Arguments
+    ///
+    /// * `destination` - A [`Destination`] enum specifying where to send funds:
+    ///   - `Destination::Address(String, u64)` — send to a raw Bitcoin address and amount (in satoshis).
+    ///   - `Destination::P2WPKH(PublicKey, u64)` — convert a public key into a P2WPKH address and send the specified amount.
+    ///   - `Destination::Batch(Vec<Destination>)` — recursively process a batch of multiple destinations.
+    /// * `fee_rate` - Optional fee rate in satoshis per virtual byte. If `None`,
+    ///   the wallet will use its default fee estimation.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing:
+    /// * `Ok(Transaction)` - The successfully created, signed, and broadcasted transaction
+    /// * `Err(WalletError)` - If transaction creation, signing, or broadcasting fails
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// * The provided address is invalid
+    /// * A public key cannot be converted into a valid P2WPKH address
+    /// * The wallet does not have sufficient funds to cover the amounts and fees
+    /// * The batch destination contains invalid entries
+    /// * Transaction signing fails
+    /// * Broadcasting to the network fails
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// # use rust_bitvmx_wallet::{Wallet, Destination};
+    /// # use bitcoin::PublicKey;
+    /// # let mut wallet = Wallet::new(/* ... */).unwrap();
+    ///
+    /// // Send 50,000 sats to a raw address and broadcast it
+    /// let destination = Destination::Address("bcrt1qxyz...".to_string(), 50_000);
+    /// let tx = wallet.send_funds(destination, Some(5)).unwrap();
+    /// println!("Broadcasted transaction: {}", tx.txid());
+    ///
+    /// // Send 75,000 sats to a P2WPKH derived from a public key
+    /// # let pubkey = PublicKey::from_str("...").unwrap();
+    /// let destination = Destination::P2WPKH(pubkey, 75_000);
+    /// let tx = wallet.send_funds(destination, None).unwrap();
+    /// println!("Broadcasted P2WPKH transaction: {}", tx.txid());
+    ///
+    /// // Send to multiple destinations in a batch
+    /// let batch = vec![
+    ///     Destination::Address("bcrt1qabc...".to_string(), 25_000),
+    ///     Destination::P2WPKH(pubkey, 10_000),
+    /// ];
+    /// let destination = Destination::Batch(batch);
+    /// let tx = wallet.send_funds(destination, Some(3)).unwrap();
+    /// println!("Broadcasted batch transaction: {}", tx.txid());
+    /// ```
     pub fn send_funds(
         &mut self,
         destination: Destination,
@@ -894,106 +1011,6 @@ impl Wallet {
         Ok(tx)
     }
 
-    /// Sends funds to a specific address and broadcasts the transaction.
-    ///
-    /// This method creates, signs, and broadcasts a transaction to send funds
-    /// to the specified address. The wallet is updated with the unconfirmed transaction.
-    ///
-    /// # Arguments
-    ///
-    /// * `to_address` - The destination Bitcoin address
-    /// * `amount` - Amount to send in satoshis
-    /// * `fee_rate` - Optional fee rate in satoshis per virtual byte
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing the broadcast transaction or an error.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// let tx = wallet.send_to_address(
-    ///     "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
-    ///     100000, // 0.001 BTC
-    ///     Some(5), // 5 sat/vB fee rate
-    /// )?;
-    /// println!("Transaction sent: {}", tx.compute_txid());
-    /// ```
-    // TODO: should we do it private? Only make public send_funds and create_tx?
-    pub fn send_to_address(
-        &mut self,
-        to_address: &str,
-        amount: u64,
-        fee_rate: Option<u64>,
-    ) -> Result<Transaction, WalletError> {
-        let tx = self.send_to_address_tx(vec![to_address], vec![amount], fee_rate)?;
-        // Broadcast the transaction and update the wallet with the unconfirmed transaction
-        info!(
-            "send_to_address: Broadcasting transaction: {}",
-            tx.compute_txid()
-        );
-        self.send_transaction(&tx)?;
-        Ok(tx)
-    }
-
-    /// Sends Bitcoin to multiple addresses in a single transaction.
-    ///
-    /// This method creates and broadcasts a transaction that sends specified amounts
-    /// to multiple recipient addresses. Each address in `to_addresses` corresponds
-    /// to the amount at the same index in `amounts`.
-    ///
-    /// # Arguments
-    ///
-    /// * `to_addresses` - A vector of Bitcoin addresses (as strings) to send to.
-    ///   Must be valid addresses for the wallet's network.
-    /// * `amounts` - A vector of amounts in satoshis to send to each corresponding address.
-    ///   Must have the same length as `to_addresses`.
-    /// * `fee_rate` - Optional fee rate in satoshis per virtual byte. If None,
-    ///   the wallet will use its default fee estimation.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `Result` containing:
-    /// * `Ok(Transaction)` - The created and broadcasted transaction
-    /// * `Err(WalletError)` - If address parsing fails, insufficient funds,
-    ///   network errors, or other wallet operations fail
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if:
-    /// * The number of addresses and amounts don't match
-    /// * Any address is invalid for the wallet's network
-    /// * The wallet has insufficient funds to cover the amounts and fees
-    /// * The transaction cannot be broadcast to the network
-    /// * The fee rate is invalid
-    ///
-    /// # Example
-    ///
-    /// ```rust,no_run
-    /// # use rust_bitvmx_wallet::Wallet;
-    /// # let mut wallet = Wallet::new(/* ... */).unwrap();
-    /// let addresses = vec!["bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh", "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"];
-    /// let amounts = vec![10000, 20000]; // 10k and 20k satoshis
-    /// let fee_rate = Some(10); // 10 sat/vB
-    ///
-    /// match wallet.send_to_many_addresses(addresses, amounts, fee_rate) {
-    ///     Ok(tx) => println!("Transaction sent: {}", tx.txid()),
-    ///     Err(e) => eprintln!("Failed to send: {}", e),
-    /// }
-    /// ```
-    // TODO: should we do it private? Only make public send_funds and create_tx?
-    pub fn send_to_many_addresses(
-        &mut self,
-        to_addresses: Vec<&str>,
-        amounts: Vec<u64>,
-        fee_rate: Option<u64>,
-    ) -> Result<Transaction, WalletError> {
-        let tx = self.send_to_address_tx(to_addresses, amounts, fee_rate)?;
-        // Broadcast the transaction and update the wallet with the unconfirmed transaction
-        self.send_transaction(&tx)?;
-        Ok(tx)
-    }
-
     pub fn pub_key_to_p2wpk(
         public_key: &PublicKey,
         network: Network,
@@ -1001,128 +1018,6 @@ impl Wallet {
         let script = ScriptBuf::new_p2wpkh(&public_key.wpubkey_hash()?);
         let address = Address::from_script(&script, network)?;
         Ok(address.to_string())
-    }
-
-    /// Sends Bitcoin to a P2WPKH (Pay-to-Witness-Public-Key-Hash) address.
-    ///
-    /// This method converts a public key to a P2WPKH address and sends the specified
-    /// amount to that address. P2WPKH is a native SegWit address format that provides
-    /// better security and lower fees compared to legacy addresses.
-    ///
-    /// # Arguments
-    ///
-    /// * `public_key` - The public key to convert to a P2WPKH address
-    /// * `amount` - The amount in satoshis to send
-    /// * `fee_rate` - Optional fee rate in satoshis per virtual byte. If None,
-    ///   the wallet will use its default fee estimation.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `Result` containing:
-    /// * `Ok(Transaction)` - The created and broadcasted transaction
-    /// * `Err(WalletError)` - If public key conversion fails, insufficient funds,
-    ///   network errors, or other wallet operations fail
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if:
-    /// * The public key cannot be converted to a valid P2WPKH address
-    /// * The wallet has insufficient funds to cover the amount and fees
-    /// * The transaction cannot be broadcast to the network
-    /// * The fee rate is invalid
-    ///
-    /// # Example
-    ///
-    /// ```rust,no_run
-    /// # use rust_bitvmx_wallet::Wallet;
-    /// # use bitcoin::PublicKey;
-    /// # let mut wallet = Wallet::new(/* ... */).unwrap();
-    /// # let public_key = PublicKey::from_str("...").unwrap();
-    /// let amount = 50000; // 50k satoshis
-    /// let fee_rate = Some(5); // 5 sat/vB
-    ///
-    /// match wallet.send_to_p2wpkh(&public_key, amount, fee_rate) {
-    ///     Ok(tx) => println!("P2WPKH transaction sent: {}", tx.txid()),
-    ///     Err(e) => eprintln!("Failed to send to P2WPKH: {}", e),
-    /// }
-    /// ```
-    // TODO: should we do it private? Only make public send_funds and create_tx?
-    pub fn send_to_p2wpkh(
-        &mut self,
-        public_key: &PublicKey,
-        amount: u64,
-        fee_rate: Option<u64>,
-    ) -> Result<Transaction, WalletError> {
-        let address = Wallet::pub_key_to_p2wpk(public_key, self.network)?;
-        let tx = self.send_to_address(&address, amount, fee_rate)?;
-        Ok(tx)
-    }
-
-    /// Sends Bitcoin to multiple P2WPKH (Pay-to-Witness-Public-Key-Hash) addresses in a single transaction.
-    ///
-    /// This method converts multiple public keys to P2WPKH addresses and sends specified
-    /// amounts to each address in a single transaction. P2WPKH is a native SegWit address
-    /// format that provides better security and lower fees compared to legacy addresses.
-    ///
-    /// # Arguments
-    ///
-    /// * `public_keys` - A vector of public keys to convert to P2WPKH addresses.
-    ///   Each public key will be converted to a corresponding P2WPKH address.
-    /// * `amounts` - A vector of amounts in satoshis to send to each corresponding address.
-    ///   Must have the same length as `public_keys`.
-    /// * `fee_rate` - Optional fee rate in satoshis per virtual byte. If None,
-    ///   the wallet will use its default fee estimation.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `Result` containing:
-    /// * `Ok(Transaction)` - The created and broadcasted transaction
-    /// * `Err(WalletError)` - If public key conversion fails, insufficient funds,
-    ///   network errors, or other wallet operations fail
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if:
-    /// * The number of public keys and amounts don't match
-    /// * Any public key cannot be converted to a valid P2WPKH address
-    /// * The wallet has insufficient funds to cover the amounts and fees
-    /// * The transaction cannot be broadcast to the network
-    /// * The fee rate is invalid
-    ///
-    /// # Example
-    ///
-    /// ```rust,no_run
-    /// # use rust_bitvmx_wallet::Wallet;
-    /// # use bitcoin::PublicKey;
-    /// # let mut wallet = Wallet::new(/* ... */).unwrap();
-    /// # let pub_key1 = PublicKey::from_str("...").unwrap();
-    /// # let pub_key2 = PublicKey::from_str("...").unwrap();
-    /// let public_keys = vec![&pub_key1, &pub_key2];
-    /// let amounts = vec![25000, 75000]; // 25k and 75k satoshis
-    /// let fee_rate = Some(8); // 8 sat/vB
-    ///
-    /// match wallet.send_to_many_p2wpkh(public_keys, amounts, fee_rate) {
-    ///     Ok(tx) => println!("Multi-P2WPKH transaction sent: {}", tx.txid()),
-    ///     Err(e) => eprintln!("Failed to send to multiple P2WPKH: {}", e),
-    /// }
-    /// ```
-    // TODO: should we do it private? Only make public send_funds and create_tx?
-    pub fn send_to_many_p2wpkh(
-        &mut self,
-        public_keys: Vec<&PublicKey>,
-        amounts: Vec<u64>,
-        fee_rate: Option<u64>,
-    ) -> Result<Transaction, WalletError> {
-        let addresses = public_keys
-            .iter()
-            .map(|public_key| Wallet::pub_key_to_p2wpk(public_key, self.network))
-            .collect::<Result<Vec<String>, WalletError>>()?;
-        let tx = self.send_to_many_addresses(
-            addresses.iter().map(|address| address.as_str()).collect(),
-            amounts,
-            fee_rate,
-        )?;
-        Ok(tx)
     }
 
     pub fn pub_key_to_p2tr(
@@ -1148,7 +1043,7 @@ impl Wallet {
         fee_rate: Option<u64>,
     ) -> Result<Transaction, WalletError> {
         let address = self.pub_key_to_p2tr(x_public_key, tap_leaves)?;
-        let tx = self.send_to_address(&address.to_string(), amount, fee_rate)?;
+        let tx = self.send_funds(Destination::Address(address.to_string(), amount), fee_rate)?;
         Ok(tx)
     }
 
@@ -1376,31 +1271,21 @@ pub trait RegtestWallet {
 
     /// Send funds to a specific address and mines 1 block
     /// This function is only available in regtest mode
+    #[deprecated(since = "0.2.0", note = "Use `fund_destination` instead")]
     fn fund_address(&mut self, to_address: &str, amount: u64) -> Result<Transaction, WalletError>;
-
-    /// Send funds to many specific addresses and mines 1 block
-    /// This function is only available in regtest mode
-    fn fund_many_addresses(
-        &mut self,
-        to_addresses: Vec<&str>,
-        amounts: Vec<u64>,
-    ) -> Result<Transaction, WalletError>;
 
     /// Send funds to a specific p2wpkh public key and mines 1 block
     /// This function is only available in regtest mode
+    #[deprecated(since = "0.2.0", note = "Use `fund_destination` instead")]
     fn fund_p2wpkh(
         &mut self,
         public_key: &PublicKey,
         amount: u64,
     ) -> Result<Transaction, WalletError>;
 
-    /// Send funds to a specific many p2wpkh public keys and mines 1 block
+    /// Send funds to a specific destination and mines 1 block
     /// This function is only available in regtest mode
-    fn fund_many_p2wpkhs(
-        &mut self,
-        public_keys: Vec<&PublicKey>,
-        amounts: Vec<u64>,
-    ) -> Result<Transaction, WalletError>;
+    fn fund_destination(&mut self, destination: Destination) -> Result<Transaction, WalletError>;
 
     /// Send funds to a specific p2tr public key and mines 1 block
     /// This function is only available in regtest mode
@@ -1495,7 +1380,7 @@ impl RegtestWallet for Wallet {
         self.check_network()?;
 
         // Mine 1 block to the receive address
-        let tx = self.send_to_address(to_address, amount, None)?;
+        let tx = self.send_funds(Destination::Address(to_address.to_string(), amount), None)?;
         // Mine 100 blocks to ensure the coinbase output is mature
         self.mine(1)?;
         // Sync the wallet with the Bitcoin node to the latest block and mempool
@@ -1504,17 +1389,13 @@ impl RegtestWallet for Wallet {
         Ok(tx)
     }
 
-    /// Send funds to many specific addresses and mines 1 block
+    /// Send funds to a specific destination and mines 1 block
     /// This function is only available in regtest mode
-    fn fund_many_addresses(
-        &mut self,
-        to_addresses: Vec<&str>,
-        amounts: Vec<u64>,
-    ) -> Result<Transaction, WalletError> {
+    fn fund_destination(&mut self, destination: Destination) -> Result<Transaction, WalletError> {
         self.check_network()?;
 
         // Mine 1 block to the receive address
-        let tx = self.send_to_many_addresses(to_addresses, amounts, None)?;
+        let tx = self.send_funds(destination, None)?;
         // Mine 100 blocks to ensure the coinbase output is mature
         self.mine(1)?;
         // Sync the wallet with the Bitcoin node to the latest block and mempool
@@ -1530,26 +1411,7 @@ impl RegtestWallet for Wallet {
         public_key: &PublicKey,
         amount: u64,
     ) -> Result<Transaction, WalletError> {
-        let address = Wallet::pub_key_to_p2wpk(public_key, self.network)?;
-        let tx = self.fund_address(&address.to_string(), amount)?;
-        Ok(tx)
-    }
-
-    /// Send funds to a specific p2wpkh public key and mines 1 block
-    /// This function is only available in regtest mode
-    fn fund_many_p2wpkhs(
-        &mut self,
-        public_keys: Vec<&PublicKey>,
-        amounts: Vec<u64>,
-    ) -> Result<Transaction, WalletError> {
-        let addresses = public_keys
-            .iter()
-            .map(|public_key| Wallet::pub_key_to_p2wpk(public_key, self.network))
-            .collect::<Result<Vec<String>, WalletError>>()?;
-        let tx = self.fund_many_addresses(
-            addresses.iter().map(|address| address.as_str()).collect(),
-            amounts,
-        )?;
+        let tx = self.fund_destination(Destination::P2WPKH(*public_key, amount))?;
         Ok(tx)
     }
 
@@ -1560,7 +1422,7 @@ impl RegtestWallet for Wallet {
         amount: u64,
     ) -> Result<Transaction, WalletError> {
         let address = self.pub_key_to_p2tr(x_public_key, tap_leaves)?;
-        let tx = self.fund_address(&address.to_string(), amount)?;
+        let tx = self.fund_destination(Destination::Address(address.to_string(), amount))?;
         Ok(tx)
     }
 

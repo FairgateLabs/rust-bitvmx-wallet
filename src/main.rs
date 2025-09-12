@@ -1,25 +1,25 @@
 //! Main entry point for the BitVMX wallet CLI application.
-//! 
+//!
 //! This module contains the main function and supporting functions for the command-line
 //! interface. It handles command parsing, configuration loading, and execution of
 //! wallet operations.
-//! 
+//!
 //! ## Features
-//! 
+//!
 //! - **Command Parsing**: Parse and validate command-line arguments
 //! - **Configuration Management**: Load and validate configuration files
 //! - **Error Handling**: Comprehensive error handling and user feedback
 //! - **Logging Setup**: Configure tracing and logging for the application
 //! - **Command Execution**: Execute wallet operations based on user commands
-//! 
+//!
 //! ## Usage
-//! 
+//!
 //! The application can be run with various subcommands:
-//! 
+//!
 //! ```bash
 //! # Basic usage
 //! bitvmx-wallet [OPTIONS] <COMMAND>
-//! 
+//!
 //! # Examples
 //! bitvmx-wallet create-wallet my_wallet
 //! bitvmx-wallet send-to-address my_wallet <address> <amount>
@@ -41,14 +41,16 @@ use tracing_subscriber::EnvFilter;
 use wallet::{RegtestWallet, Wallet};
 use wallet_manager::WalletManager;
 
+use crate::wallet::Destination;
+
 /// Configures tracing and logging for the application.
-/// 
+///
 /// This function sets up the tracing subscriber with appropriate log levels
 /// and filters for different modules. It configures the logging to show
 /// relevant information while suppressing verbose output from external libraries.
-/// 
+///
 /// ## Log Levels
-/// 
+///
 /// - `info`: General application information
 /// - `bitcoincore_rpc=off`: Suppress Bitcoin Core RPC logging
 /// - `hyper=off`: Suppress HTTP client logging
@@ -67,42 +69,42 @@ fn config_trace_aux() {
 }
 
 /// Main entry point for the BitVMX wallet CLI application.
-/// 
+///
 /// This function serves as the main entry point for the command-line interface.
 /// It handles command parsing, configuration loading, and execution of wallet
 /// operations based on the provided subcommands.
-/// 
+///
 /// ## Process Flow
-/// 
+///
 /// 1. Parse command-line arguments using `clap`
 /// 2. Load configuration from the specified file
 /// 3. Initialize logging and tracing
 /// 4. Create wallet manager instance
 /// 5. Execute the requested subcommand
 /// 6. Handle errors and provide user feedback
-/// 
+///
 /// ## Error Handling
-/// 
+///
 /// The function provides comprehensive error handling:
 /// - Configuration loading errors
 /// - Wallet manager initialization errors
 /// - Command execution errors
 /// - Graceful error reporting to users
-/// 
+///
 /// ## Exit Codes
-/// 
+///
 /// - `0`: Successful execution
 /// - `1`: Error occurred (with error message printed to stderr)
-/// 
+///
 /// ## Examples
-/// 
+///
 /// ```bash
 /// # Create a new wallet
 /// bitvmx-wallet create-wallet my_wallet
-/// 
+///
 /// # Send funds to an address
 /// bitvmx-wallet send-to-address my_wallet bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh 100000
-/// 
+///
 /// # Sync a wallet
 /// bitvmx-wallet sync-wallet my_wallet
 /// ```
@@ -142,7 +144,10 @@ fn main() {
                     process::exit(1);
                 }
             }
-            match wallet.send_to_address(to_address, *amount, *fee_rate) {
+            match wallet.send_funds(
+                Destination::Address(to_address.to_string(), *amount),
+                *fee_rate,
+            ) {
                 Ok(tx) => println!("Sent to address, txid: {}", tx.compute_txid()),
                 Err(e) => eprintln!(
                     "Error sending to address {to_address} with amount {amount} satoshis: {e}"
@@ -249,8 +254,10 @@ fn main() {
                     process::exit(1);
                 }
             };
-            match wallet.fund_address(to_address, *amount) {
-                Ok(_) => println!("Funded address {to_address} with amount {amount} satoshis and mined 1 block"),
+            match wallet.fund_destination(Destination::Address(to_address.to_string(), *amount)) {
+                Ok(_) => println!(
+                    "Funded address {to_address} with amount {amount} satoshis and mined 1 block"
+                ),
                 Err(e) => eprintln!(
                     "Error funding address {to_address} with amount {amount} satoshis: {e}"
                 ),

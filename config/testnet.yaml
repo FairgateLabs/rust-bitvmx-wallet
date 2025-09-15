@@ -14,3 +14,7 @@ key_storage:
 
 storage:
   path: /tmp/testnet/wallet/storage.db
+
+wallet:
+  db_path: /tmp/testnet/wallet/wallet.db
+  start_height: 3878676

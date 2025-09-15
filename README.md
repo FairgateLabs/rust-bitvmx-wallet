@@ -1,7 +1,6 @@
-# rust-bitvmx-wallet
+# BitVMX Wallet
 
-A simple Bitcoin wallet CLI for the BitVMX project, built in Rust.  
-This tool allows you to manage keys, fund and spend from addresses, and interact with a Bitcoin node (regtest, testnet, or mainnet).
+A comprehensive Bitcoin wallet implementation built with Rust, designed for the BitVMX ecosystem. This crate provides a full-featured wallet with support for multiple key management strategies, transaction handling, and Bitcoin network integration.
 
 ## ⚠️ Disclaimer
 
@@ -10,134 +9,87 @@ It is not production-ready, has not been audited, and future updates may introdu
 
 ## Features
 
-- Create and import secret keys (per wallet identifier)
-- Add and remove funding (UTXOs)
-- Fund addresses and manage transfers
-- List wallet funds
-- Mine regtest blocks
-- Convert BTC to Satoshis
-- Configurable via YAML config file
+- **Multiple Key Management**: Support for private keys, derived keypairs, and partial private keys
+- **Transaction Operations**: Send, receive, and manage Bitcoin transactions
+- **Network Integration**: Full integration with Bitcoin Core RPC for blockchain synchronization
+- **Regtest Support**: Comprehensive testing utilities for development and testing
+- **CLI Interface**: Command-line interface for wallet operations
+- **Persistent Storage**: SQLite-based wallet persistence
 
-## How it works
 
-- **rust-bitvmx-wallet** manages "logical wallets" (identifiers and keys) in a local database.
-- All Bitcoin transactions (except the initial regtest funding helper) are constructed and signed by this CLI, not by the Bitcoin Core wallet.
-- For **regtest only**: if you use the `regtest-fund` helper, the wallet name in your config must match an existing wallet in your node.
 
-## Usage
+## Test
+
+To run test use:
 
 ```sh
-cargo run -- [OPTIONS] <COMMAND>
+cargo test -- --ignored --test-threads=1  
 ```
 
-### Global Options
+## Documentation
 
-- `-c, --config <FILE>`: Path to the config file (default: `config/regtest.yaml`)
+This project includes comprehensive documentation that can be generated using `cargo doc`. The documentation covers all public APIs, structs, enums, and methods with detailed examples and usage instructions.
 
-### Commands
+### Generating Documentation
 
-- `create-wallet <IDENTIFIER>`  
-  Create a new logical wallet (generates a new keypair and stores it locally).
+To generate the documentation:
 
-- `import-key <IDENTIFIER> <SECRET_KEY>`  
-  Import a secret key (hex or WIF) for an identifier.
+```bash
+# Generate documentation for the current crate only
+cargo doc --no-deps
 
-- `export-wallet <IDENTIFIER>`  
-  Export the public and secret key for a wallet.
+# Generate documentation including dependencies
+cargo doc
 
-- `add-funding <IDENTIFIER> <FUNDING_ID> <OUTPOINT> <AMOUNT>`  
-  Register a UTXO as funding (OUTPOINT format: `"txid:vout"`).
-
-- `remove-funding <IDENTIFIER> <FUNDING_ID>`  
-  Remove a funding entry.
-
-- `fund-address <IDENTIFIER> <FUNDING_ID> <TO_PUBKEY> <AMOUNT> <FEE> {OUTPUT_IS_TAPROOT = FALSE}`  
-  Send funds to a public key.
-
-- `confirm-transfer <IDENTIFIER> <FUNDING_ID>`  
-  Confirm a pending transfer.
-
-- `revert-transfer <IDENTIFIER> <FUNDING_ID>`  
-  Revert a pending transfer.
-
-- `list-funds <IDENTIFIER>`  
-  List all funds for an identifier.
-
-- `mine <NUM_BLOCKS>`  
-  Mine blocks (regtest only).
-
-- `regtest-fund <IDENTIFIER> <FUNDING_ID> <AMOUNT>`  
-  Fund an identifier using regtest coins (only works if your node is in regtest mode and the wallet name matches).
-
-- `btc-to-sat <BTC>`  
-  Convert BTC to Satoshis.
-
-- `list-wallets`  
-  List all wallet identifiers and their public keys.
-
-## Example workflow
-
-```sh
-# 1. (Regtest only, optional) Ensure your Bitcoin Core node has a wallet matching your config:
-docker exec -it bitvmx-node-1 bitcoin-cli -regtest -rpcuser=foo -rpcpassword=rpcpassword createwallet test_wallet
-
-# 2. Create a logical wallet (generates a new keypair)
-cargo run -- create-wallet alice
-
-# 3. Fund the wallet in regtest mode (helper)
-cargo run -- regtest-fund alice fund1 100000
-
-# 4. List funds
-cargo run -- list-funds alice
-
-# 5. Send funds to another public key
-cargo run -- fund-address alice fund1 <pubkey> 50000 1000
-
-# 6. Mine blocks to confirm
-cargo run -- mine 1
+# Generate documentation and open in browser
+cargo doc --open
 ```
 
-## Configuration
+The generated documentation will be available in `target/doc/bitvmx_wallet/index.html`.
 
-The wallet expects a YAML config file (default: `config/regtest.yaml`).  
-You can specify a different config file with `-c` or `--config`.
+### Documentation Features
 
-Example `config/regtest.yaml`:
+The documentation includes:
 
-```yaml
-bitcoin:
-  network: regtest
-  url: http://127.0.0.1:18443
-  username: foo
-  password: rpcpassword
-  wallet: test_wallet
+- **Module-level documentation**: Overview of each module's purpose and functionality
+- **Struct and enum documentation**: Detailed descriptions of all public types
+- **Method documentation**: Comprehensive documentation for all public methods including:
+  - Parameter descriptions
+  - Return value explanations
+  - Usage examples
+  - Error handling information
+- **Code examples**: Runnable examples showing how to use the API
+- **Cross-references**: Links between related types and methods
 
-key_manager:
-  network: regtest
+### Key Documentation Sections
 
-key_storage:
-  password: secret_password_1
-  path: /tmp/regtest/wallet/keys.db
+- **Configuration Management**: How to configure the wallet system
+- **Wallet Operations**: Creating, loading, and managing wallets
+- **Transaction Handling**: Sending and receiving Bitcoin transactions
+- **Blockchain Synchronization**: Syncing with Bitcoin nodes
+- **CLI Usage**: Command-line interface documentation
+- **Error Handling**: Understanding and handling errors
 
-storage:
-  path: /tmp/regtest/wallet/storage.db
+## Quick Start
+
+```rust
+use bitvmx_wallet::{config::Config, wallet::Wallet, wallet_manager::WalletManager};
+
+// Load configuration
+let config = Config::new(/* ... */)?;
+
+// Create wallet manager
+let wallet_manager = WalletManager::new(config)?;
+
+// Create a new wallet (single descriptor wallet)
+// Note: This creates a wallet without change descriptors, which limits functionality
+let wallet = wallet_manager.create_new_wallet("my_wallet")?;
 ```
 
-## Key Management Notes
+## Examples
 
-- **Regtest:**  
-  Use `create-wallet` to generate new keys and addresses for testing and mining.
-
-- **Testnet/Mainnet:**  
-  Use `import-key` to import an existing secret key (WIF format) that controls funds on a P2WPKH (bech32) address.  
-  After importing, use `add-funding` to register the UTXO (by txid:vout and amount) that you control with this key.
-
-## Important
-
-- For regtest, if you use the `regtest-fund` helper, the wallet name in your config must match an existing wallet in your node.
-- All other transactions are constructed and signed by this CLI, not by the Bitcoin Core wallet.
-- Local wallet/key data is stored in the paths specified in your config file.
+See the individual module documentation for detailed examples of each component.
 
 ## License
 
-MIT
+This project is licensed under the MIT License.

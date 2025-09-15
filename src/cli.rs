@@ -1,82 +1,304 @@
+//! Command-line interface for the BitVMX wallet.
+//! 
+//! This module provides the command-line interface for interacting with the BitVMX wallet.
+//! It uses the `clap` crate to define and parse command-line arguments and subcommands.
+//! 
+//! ## Features
+//! 
+//! - **Transaction Operations**: Send funds, sync wallets, and manage transactions
+//! - **Wallet Management**: Create, import, export, and clear wallets
+//! - **Testing Utilities**: Regtest-specific commands for development and testing
+//! - **Blockchain Operations**: Mine blocks and manage blockchain state
+//! - **Utility Functions**: Convert between BTC and satoshis
+//! 
+//! ## Examples
+//! 
+//! ```bash
+//! # Create a new wallet
+//! bitvmx-wallet create-wallet my_wallet
+//! 
+//! # Send funds to an address
+//! bitvmx-wallet send-to-address my_wallet bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh 100000
+//! 
+//! # Sync a wallet
+//! bitvmx-wallet sync-wallet my_wallet
+//! 
+//! # List all wallets
+//! bitvmx-wallet list-wallets
+//! ```
+
 use clap::{Parser, Subcommand};
 
+/// Main command-line interface for the BitVMX wallet.
+/// 
+/// This struct defines the top-level CLI structure with global options and subcommands.
+/// It uses the `clap` crate for argument parsing and help generation.
+/// 
+/// ## Global Options
+/// 
+/// - `--config` / `-c`: Path to the configuration file (default: "config/regtest.yaml")
+/// 
+/// ## Subcommands
+/// 
+/// The CLI provides various subcommands for different wallet operations:
+/// - Transaction operations (send, sync, cancel)
+/// - Wallet management (create, import, export, clear)
+/// - Testing utilities (mine, fund)
+/// - Utility functions (convert BTC to satoshis)
 #[derive(Parser)]
 #[command(name = "bitvmx-wallet")]
 #[command(about = "A simple Bitcoin wallet CLI", long_about = None)]
 pub struct Cli {
     /// Path to the config file (YAML)
+    /// 
+    /// Specifies the configuration file to use for wallet operations.
+    /// The file should contain Bitcoin network settings, key management configuration,
+    /// and wallet-specific settings.
     #[arg(short, long, global = true, default_value = "config/regtest.yaml")]
     pub config: String,
 
+    /// The subcommand to execute
     #[command(subcommand)]
     pub command: Commands,
 }
 
+/// Available subcommands for the BitVMX wallet CLI.
+/// 
+/// This enum defines all the available subcommands that can be executed
+/// through the command-line interface.
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Create a new secret key
-    CreateWallet { identifier: String },
-    /// Import a secret key
-    ImportKey {
+    /// Send funds to a Bitcoin address.
+    /// 
+    /// Creates and broadcasts a transaction to send the specified amount
+    /// to the given Bitcoin address.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `identifier` - Wallet identifier
+    /// * `to_address` - Destination Bitcoin address
+    /// * `amount` - Amount to send in satoshis
+    /// * `fee_rate` - Optional fee rate in satoshis per virtual byte
+    SendToAddress {
+        /// Wallet identifier
         identifier: String,
-        secret_key: String,
+        /// Destination Bitcoin address
+        to_address: String,
+        /// Amount to send in satoshis
+        amount: u64,
+        /// Optional fee rate in satoshis per virtual byte
+        fee_rate: Option<u64>,
     },
-    /// Export a wallet
-    ExportWallet { identifier: String },
-    /// Add funding
-    AddFunding {
+    
+    /// Synchronize a wallet with the Bitcoin network.
+    /// 
+    /// Downloads and processes all blocks and mempool transactions
+    /// to update the wallet's state to the latest blockchain state.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `identifier` - Wallet identifier
+    SyncWallet { 
+        /// Wallet identifier
+        identifier: String 
+    },
+    
+    /// Cancel a pending transaction.
+    /// 
+    /// Removes a transaction from the wallet's pending transaction list.
+    /// This is useful for transactions that haven't been confirmed yet.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `identifier` - Wallet identifier
+    /// * `txid` - Transaction ID to cancel
+    CancelTx { 
+        /// Wallet identifier
+        identifier: String, 
+        /// Transaction ID to cancel
+        txid: String 
+    },
+    
+    /// List all unspent transaction outputs (UTXOs).
+    /// 
+    /// Displays all unspent outputs in the wallet that can be used
+    /// for creating new transactions.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `identifier` - Wallet identifier
+    ListUnspent { 
+        /// Wallet identifier
+        identifier: String 
+    },
+    
+    /// Mine blocks (regtest only).
+    /// 
+    /// Generates the specified number of blocks and sends coinbase rewards
+    /// to a default address. This command is only available in regtest mode.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `num_blocks` - Number of blocks to mine
+    Mine { 
+        /// Number of blocks to mine
+        num_blocks: u64 
+    },
+    
+    /// Fund a wallet with 150 BTC (regtest only).
+    /// 
+    /// Mines blocks and sends coinbase rewards to the specified wallet,
+    /// giving it 150 BTC for testing purposes. This command is only available in regtest mode.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `identifier` - Wallet identifier to fund
+    RegtestFund { 
+        /// Wallet identifier to fund
+        identifier: String 
+    },
+    
+    /// Send funds to an address and mine 1 block (regtest only).
+    /// 
+    /// Sends the specified amount to the given address and then mines
+    /// one block to confirm the transaction. This command is only available in regtest mode.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `identifier` - Wallet identifier
+    /// * `to_address` - Destination Bitcoin address
+    /// * `amount` - Amount to send in satoshis
+    SendAndMine {
+        /// Wallet identifier
         identifier: String,
-        funding_id: String,
-        outpoint: String,
+        /// Destination Bitcoin address
+        to_address: String,
+        /// Amount to send in satoshis
         amount: u64,
     },
-    /// Remove funding
-    RemoveFunding {
-        identifier: String,
-        funding_id: String,
+    
+    /// Convert BTC to satoshis.
+    /// 
+    /// Utility command to convert a Bitcoin amount to its equivalent in satoshis.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `btc` - Amount in Bitcoin (e.g., 0.001)
+    BtcToSat { 
+        /// Amount in Bitcoin
+        btc: f64 
     },
-    /// Fund an address
-    FundAddress {
-        identifier: String,
-        funding_id: String,
-        to_pubkey: String,
-        #[arg(value_delimiter = ',')]
-        amount: Vec<u64>,
-        fee: u64,
-        #[arg(long, default_value = "false")]
-        taproot: bool,
-        #[arg(long, default_value = "false")]
-        confirm: bool,
-    },
-    /// Confirm a transfer
-    ConfirmTransfer {
-        identifier: String,
-        funding_id: String,
-    },
-    /// Revert a transfer
-    RevertTransfer {
-        identifier: String,
-        funding_id: String,
-    },
-    /// List funds
-    ListFunds { identifier: String },
-    /// Mine blocks (regtest only)
-    Mine { num_blocks: u64 },
-    /// Regtest fund
-    RegtestFund {
-        identifier: String,
-        funding_id: String,
-        amount: u64,
-    },
-    /// Convert BTC to SATS
-    BtcToSat { btc: f64 },
-    /// List wallets
+    
+    /// List all managed wallets.
+    /// 
+    /// Displays all wallets that are managed by the wallet manager,
+    /// showing their identifiers and associated public keys.
     ListWallets,
-    /// Import partial private keys to create a wallet from the aggregated private key
-    ImportPartialPrivateKeys {
-        identifier: String,
-        #[arg(value_delimiter = ',')]
-        private_keys: Vec<String>,
-        network: bitcoin::Network,
+    
+    /// Get detailed information about a wallet.
+    /// 
+    /// Displays comprehensive information about a specific wallet,
+    /// including its address, balance, and public key.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `identifier` - Wallet identifier
+    WalletInfo { 
+        /// Wallet identifier
+        identifier: String 
     },
+    
+    /// Create a new wallet with an automatically derived key pair.
+    /// 
+    /// Creates a new wallet using a key pair derived from the key manager
+    /// with an automatically incremented index.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `identifier` - Unique identifier for the new wallet
+    CreateWallet { 
+        /// Unique identifier for the new wallet
+        identifier: String 
+    },
+    
+    /// Import a derived key pair from a specific index.
+    /// 
+    /// Creates a wallet using a key pair derived from the key manager
+    /// at the specified index.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `identifier` - Unique identifier for the new wallet
+    /// * `index` - Derivation index for the key pair
+    ImportDeriveKeypair { 
+        /// Unique identifier for the new wallet
+        identifier: String, 
+        /// Derivation index for the key pair
+        index: u32 
+    },
+    
+    /// Import a private key to create a wallet.
+    /// 
+    /// Creates a wallet using the provided private key in WIF format.
+    /// The private key is imported into the key manager.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `identifier` - Unique identifier for the new wallet
+    /// * `private_key` - Private key in WIF (Wallet Import Format)
+    ImportKey {
+        /// Unique identifier for the new wallet
+        identifier: String,
+        /// Private key in WIF format
+        private_key: String,
+    },
+    
+    /// Import partial private keys to create a MuSig2 wallet.
+    /// 
+    /// Creates a wallet using partial private keys that are combined
+    /// to form a complete private key for MuSig2 multi-signature operations.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `identifier` - Unique identifier for the new wallet
+    /// * `partial_private_keys` - Comma-separated list of partial private keys
+    ImportPartialPrivateKeys {
+        /// Unique identifier for the new wallet
+        identifier: String,
+        /// Comma-separated list of partial private keys
+        #[arg(value_delimiter = ',')]
+        partial_private_keys: Vec<String>,
+    },
+    
+    /// Export wallet information.
+    /// 
+    /// Exports the wallet's public and private key descriptors.
+    /// This is useful for backup purposes or wallet migration.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `identifier` - Wallet identifier
+    ExportWallet { 
+        /// Wallet identifier
+        identifier: String 
+    },
+    
+    /// Clear a specific wallet's database.
+    /// 
+    /// Removes the wallet's database file, effectively clearing all
+    /// wallet state and transaction history.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `identifier` - Wallet identifier to clear
+    ClearWallet { 
+        /// Wallet identifier to clear
+        identifier: String 
+    },
+    
+    /// Clear all managed wallets.
+    /// 
+    /// Removes the database files for all wallets, effectively clearing
+    /// all wallet state and transaction history.
+    ClearAllWallets,
 }

@@ -7,10 +7,19 @@ bitcoin:
 
 key_manager:
   network: regtest
-
+  
 key_storage:
   password: secret_password_1
   path: /tmp/regtest/wallet/keys.db
 
 storage:
   path: /tmp/regtest/wallet/storage.db
+
+wallet:
+  db_path: /tmp/regtest/wallet/wallet.db
+  # optional start block to sync the wallet, default is 0
+  start_height: 0
+  # optional receive private key used in Wallet::from_config option
+  receive_key: cP1ZRRhFSgaQ4dEqpERzt43eVkEJGko2VeWuedAz34M6H9Vjc6zo
+  # optional change private key used in Wallet::from_config option
+  change_key: cQVo1wDrsa59CKphXm1sj77tVwMRh4QHThaHtB2SGSEcJwvizPt9

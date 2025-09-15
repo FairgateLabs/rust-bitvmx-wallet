@@ -1021,16 +1021,13 @@ impl Wallet {
         Ok(tx)
     }
 
-    pub fn pub_key_to_p2wpk(
-        public_key: &PublicKey,
-        network: Network,
-    ) -> Result<String, WalletError> {
+    fn pub_key_to_p2wpk(public_key: &PublicKey, network: Network) -> Result<String, WalletError> {
         let script = ScriptBuf::new_p2wpkh(&public_key.wpubkey_hash()?);
         let address = Address::from_script(&script, network)?;
         Ok(address.to_string())
     }
 
-    pub fn pub_key_to_p2tr(
+    fn pub_key_to_p2tr(
         x_public_key: &XOnlyPublicKey,
         tap_leaves: &[ProtocolScript],
         network: Network,
@@ -1052,6 +1049,14 @@ impl Wallet {
         Ok(tx_hash)
     }
 
+    pub fn update_with_tx(&mut self, tx: &Transaction) -> Result<(), WalletError> {
+        let last_seen_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+        self.bdk_wallet
+            .apply_unconfirmed_txs(vec![(tx.clone(), last_seen_timestamp)]);
+        self.persist_wallet()?;
+        Ok(())
+    }
+
     pub fn get_wallet_tx(&self, txid: Txid) -> Result<Option<WalletTx>, WalletError> {
         let tx = self.bdk_wallet.get_tx(txid);
         Ok(tx)
@@ -1064,6 +1069,7 @@ impl Wallet {
 
     pub fn cancel_tx(&mut self, tx: &Transaction) -> Result<(), WalletError> {
         self.bdk_wallet.cancel_tx(tx);
+        self.persist_wallet()?;
         Ok(())
     }
 

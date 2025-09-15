@@ -864,8 +864,7 @@ fn test_regtest_wallet() -> Result<(), anyhow::Error> {
     let balance = new_balance;
     let public_key =
         PublicKey::from_str("020d4bf69a836ddb088b9492af9ce72b39de9ae663b41aa9699fef4278e5ff77b4")?;
-    let address = Wallet::pub_key_to_p2wpk(&public_key, Network::Regtest)?;
-    println!("address: {:?}", address);
+    println!("Public key: {:?}", public_key);
     // Send funds to a specific p2wpkh public key and mines 1 block
     let tx = wallet.fund_destination(Destination::P2WPKH(public_key, amount.to_sat()))?;
     println!("p2wpkh tx: {:?}", tx);
@@ -877,7 +876,7 @@ fn test_regtest_wallet() -> Result<(), anyhow::Error> {
     assert_eq!(
         tx.output[0].script_pubkey,
         ScriptBuf::new_p2wpkh(&public_key.wpubkey_hash()?),
-        "Output should be to the correct address"
+        "Output should be to the correct public key"
     );
     assert_eq!(
         new_balance.total(),

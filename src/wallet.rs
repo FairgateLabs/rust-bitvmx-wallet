@@ -1269,27 +1269,9 @@ pub trait RegtestWallet {
     #[deprecated(since = "0.2.0", note = "Use `fund_destination` instead")]
     fn fund_address(&mut self, to_address: &str, amount: u64) -> Result<Transaction, WalletError>;
 
-    /// Send funds to a specific p2wpkh public key and mines 1 block
-    /// This function is only available in regtest mode
-    #[deprecated(since = "0.2.0", note = "Use `fund_destination` instead")]
-    fn fund_p2wpkh(
-        &mut self,
-        public_key: &PublicKey,
-        amount: u64,
-    ) -> Result<Transaction, WalletError>;
-
     /// Send funds to a specific destination and mines 1 block
     /// This function is only available in regtest mode
     fn fund_destination(&mut self, destination: Destination) -> Result<Transaction, WalletError>;
-
-    /// Send funds to a specific p2tr public key and mines 1 block
-    /// This function is only available in regtest mode
-    fn fund_p2tr(
-        &mut self,
-        x_public_key: &XOnlyPublicKey,
-        tap_leaves: &[ProtocolScript],
-        amount: u64,
-    ) -> Result<Transaction, WalletError>;
 
     /// Clear the database
     /// This function is only available in regtest mode
@@ -1396,28 +1378,6 @@ impl RegtestWallet for Wallet {
         // Sync the wallet with the Bitcoin node to the latest block and mempool
         self.sync_wallet()?;
 
-        Ok(tx)
-    }
-
-    /// Send funds to a specific p2wpkh public key and mines 1 block
-    /// This function is only available in regtest mode
-    fn fund_p2wpkh(
-        &mut self,
-        public_key: &PublicKey,
-        amount: u64,
-    ) -> Result<Transaction, WalletError> {
-        let tx = self.fund_destination(Destination::P2WPKH(*public_key, amount))?;
-        Ok(tx)
-    }
-
-    fn fund_p2tr(
-        &mut self,
-        x_public_key: &XOnlyPublicKey,
-        tap_leaves: &[ProtocolScript],
-        amount: u64,
-    ) -> Result<Transaction, WalletError> {
-        let address = Wallet::pub_key_to_p2tr(x_public_key, tap_leaves, self.network)?;
-        let tx = self.fund_destination(Destination::Address(address.to_string(), amount))?;
         Ok(tx)
     }
 

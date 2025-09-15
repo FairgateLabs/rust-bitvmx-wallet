@@ -1035,26 +1035,11 @@ impl Wallet {
         tap_leaves: &[ProtocolScript],
         network: Network,
     ) -> Result<Address, WalletError> {
-        let tap_spend_info = scripts::build_taproot_spend_info(
-            &Secp256k1::new(),
-            x_public_key,
-            tap_leaves,
-        )?;
+        let tap_spend_info =
+            scripts::build_taproot_spend_info(&Secp256k1::new(), x_public_key, tap_leaves)?;
         let script = ScriptBuf::new_p2tr_tweaked(tap_spend_info.output_key());
         let address = Address::from_script(&script, network)?;
         Ok(address)
-    }
-
-    pub fn send_to_p2tr(
-        &mut self,
-        x_public_key: &XOnlyPublicKey,
-        tap_leaves: &[ProtocolScript],
-        amount: u64,
-        fee_rate: Option<u64>,
-    ) -> Result<Transaction, WalletError> {
-        let address = Wallet::pub_key_to_p2tr(x_public_key, tap_leaves, self.network)?;
-        let tx = self.send_funds(Destination::Address(address.to_string(), amount), fee_rate)?;
-        Ok(tx)
     }
 
     /// Send a transaction and update the wallet with the unconfirmed transaction

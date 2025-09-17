@@ -39,16 +39,18 @@
 //! )?;
 //! ```
 
-#[allow(unused_imports)]
+use crate::wallet::types::{Destination, Emission};
+use crate::wallet::utils::{
+    p2tr_descriptor, p2wpkh_descriptor, pub_key_to_p2tr, pub_key_to_p2wpkh,
+};
 use crate::{config::WalletConfig, errors::WalletError};
 use bitcoin::{
     key::Secp256k1, Address, Amount, Block, FeeRate, Network, PrivateKey, Psbt, PublicKey,
-    ScriptBuf, Transaction, Txid, XOnlyPublicKey,
+    Transaction, Txid,
 };
 
 use bitvmx_bitcoin_rpc::{reqwest_https::ReqwestHttpsTransport, rpc_config::RpcConfig};
 use key_manager::key_manager::KeyManager;
-use protocol_builder::scripts::{self, ProtocolScript};
 use tracing::{debug, error, info, trace};
 
 use bdk_bitcoind_rpc::{
@@ -61,7 +63,6 @@ use bdk_wallet::{
     TxBuilder, TxOrdering, Wallet as BdkWallet, WalletTx,
 };
 use ctrlc;
-use serde::{Deserialize, Serialize};
 use std::{
     fmt::{self, Display},
     fs,
@@ -72,36 +73,6 @@ use std::{
     thread::spawn,
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
-
-/// Events that can be emitted during wallet synchronization.
-///
-/// This enum represents different types of events that can occur during
-/// blockchain synchronization, including termination signals and blockchain events.
-#[derive(Debug)]
-pub enum Emission {
-    /// Signal termination event (SIGTERM).
-    ///
-    /// Used to gracefully shut down synchronization processes.
-    SigTerm,
-
-    /// New block event.
-    ///
-    /// Contains information about a new block that has been added to the blockchain.
-    Block(bdk_bitcoind_rpc::BlockEvent<Block>),
-
-    /// Mempool event.
-    ///
-    /// Contains information about changes in the transaction mempool.
-    Mempool(bdk_bitcoind_rpc::MempoolEvent),
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub enum Destination {
-    Address(String, u64),   // (address, amount in sats)
-    P2WPKH(PublicKey, u64), // (pubkey, amount in sats)
-    Batch(Vec<Destination>),
-    P2TR(XOnlyPublicKey, Vec<ProtocolScript>, u64), // (xpubkey, tap_leaves, amount in sats)
-}
 
 /// A Bitcoin wallet instance with full functionality.
 ///
@@ -228,9 +199,9 @@ impl Wallet {
         public_key: &PublicKey,
         change_public_key: Option<&PublicKey>,
     ) -> Result<Wallet, WalletError> {
-        let descriptor = Self::p2wpkh_descriptor(&key_manager.export_secret(public_key)?.to_wif())?;
+        let descriptor = p2wpkh_descriptor(&key_manager.export_secret(public_key)?.to_wif())?;
         let change_descriptor = match change_public_key {
-            Some(change_public_key) => Some(Self::p2wpkh_descriptor(
+            Some(change_public_key) => Some(p2wpkh_descriptor(
                 &key_manager.export_secret(change_public_key)?.to_wif(),
             )?),
             None => None,
@@ -293,12 +264,11 @@ impl Wallet {
         change_index: Option<u32>,
     ) -> Result<Wallet, WalletError> {
         let public_key = key_manager.derive_keypair(index)?;
-        let descriptor =
-            Self::p2wpkh_descriptor(&key_manager.export_secret(&public_key)?.to_wif())?;
+        let descriptor = p2wpkh_descriptor(&key_manager.export_secret(&public_key)?.to_wif())?;
         let change_descriptor = match change_index {
             Some(change_index) => {
                 let change_public_key = key_manager.derive_keypair(change_index)?;
-                Some(Self::p2wpkh_descriptor(
+                Some(p2wpkh_descriptor(
                     &key_manager.export_secret(&change_public_key)?.to_wif(),
                 )?)
             }
@@ -359,9 +329,9 @@ impl Wallet {
         change_private_key: Option<&str>,
     ) -> Result<Wallet, WalletError> {
         let public_key = PrivateKey::from_str(private_key)?.public_key(&Secp256k1::new());
-        let descriptor = Self::p2wpkh_descriptor(private_key)?;
+        let descriptor = p2wpkh_descriptor(private_key)?;
         let change_descriptor = match change_private_key {
-            Some(change_private_key) => Some(Self::p2wpkh_descriptor(change_private_key)?),
+            Some(change_private_key) => Some(p2wpkh_descriptor(change_private_key)?),
             None => None,
         };
         Self::new(
@@ -431,41 +401,6 @@ impl Wallet {
         )
     }
 
-    /// Creates a P2WPKH (Pay-to-Witness-Public-Key-Hash) descriptor.
-    ///
-    /// This function creates a native SegWit descriptor using a private key in WIF format.
-    /// P2WPKH addresses provide better security and lower transaction fees compared to legacy addresses.
-    ///
-    /// # Arguments
-    ///
-    /// * `private_key` - Private key in WIF (Wallet Import Format)
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing the descriptor string or an error.
-    ///
-    /// # Notes
-    ///
-    /// The descriptor format follows the Bitcoin descriptor specification:
-    /// - `wpkh()` indicates native SegWit private key in WIF format
-    /// - See [BDK descriptor documentation](https://docs.rs/bdk_wallet/2.0.0/bdk_wallet/macro.descriptor.html)
-    /// - See [Bitcoin descriptor specification](https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md#examples)
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// let descriptor = Wallet::p2wpkh_descriptor(
-    ///     "L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o"
-    /// )?;
-    /// // Returns: "wpkh(L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o)"
-    /// ```
-    fn p2wpkh_descriptor(private_key: &str) -> Result<String, WalletError> {
-        // This descriptor for the wallet, wpkh indicates native segwit private key in wif format
-        // See https://docs.rs/bdk_wallet/2.0.0/bdk_wallet/macro.descriptor.html
-        // and https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md#examples
-        Ok(format!("wpkh({private_key})"))
-    }
-
     /// Creates a wallet from partial private keys for MuSig2 multi-signature.
     ///
     /// This constructor creates a wallet using partial private keys that are combined
@@ -526,7 +461,7 @@ impl Wallet {
         };
 
         let descriptor =
-            Self::p2tr_descriptor(&key_manager.export_secret(&aggregated_public_key)?.to_wif())?;
+            p2tr_descriptor(&key_manager.export_secret(&aggregated_public_key)?.to_wif())?;
         Self::new(
             bitcoin_config,
             wallet_config,
@@ -534,40 +469,6 @@ impl Wallet {
             &descriptor,
             None,
         )
-    }
-
-    /// Creates a P2TR (Pay-to-Taproot) descriptor.
-    ///
-    /// This function creates a Taproot descriptor using a private key in WIF format.
-    /// P2TR addresses provide the latest Bitcoin address format with enhanced privacy and efficiency.
-    ///
-    /// # Arguments
-    ///
-    /// * `private_key` - Private key in WIF (Wallet Import Format)
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing the descriptor string or an error.
-    ///
-    /// # Notes
-    ///
-    /// The descriptor format follows the Bitcoin descriptor specification:
-    /// - `tr()` indicates P2TR output with the specified key as internal key
-    /// - See [Bitcoin descriptor specification](https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md#examples)
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// let descriptor = Wallet::p2tr_descriptor(
-    ///     "L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o"
-    /// )?;
-    /// // Returns: "tr(L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o)"
-    /// ```
-    fn p2tr_descriptor(private_key: &str) -> Result<String, WalletError> {
-        // P2TR output with the specified key as internal key, and optionally a tree of script paths.
-        // tr(KEY) or tr(KEY,TREE) (top level only): P2TR output with the specified key as internal key, and optionally a tree of script paths.
-        // See https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md#examples
-        Ok(format!("tr({private_key})"))
     }
 
     /// Creates a new wallet instance with initial data persisted to a SQLite database.
@@ -837,7 +738,7 @@ impl Wallet {
                     amounts.push(amount);
                 }
                 Destination::P2WPKH(pubkey, amount) => {
-                    let addr = Wallet::pub_key_to_p2wpk(&pubkey, network)?;
+                    let addr = pub_key_to_p2wpkh(&pubkey, network)?;
                     addresses.push(addr.to_string());
                     amounts.push(amount);
                 }
@@ -848,7 +749,7 @@ impl Wallet {
                     amounts.extend(nested_amounts);
                 }
                 Destination::P2TR(x_public_key, tap_leaves, amount) => {
-                    let address = Wallet::pub_key_to_p2tr(&x_public_key, &tap_leaves, network)?;
+                    let address = pub_key_to_p2tr(&x_public_key, &tap_leaves, network)?;
                     addresses.push(address.to_string());
                     amounts.push(amount);
                 }
@@ -927,8 +828,8 @@ impl Wallet {
                 self.send_to_address_tx(vec![address.as_str()], vec![amount], fee_rate)
             }
             Destination::P2WPKH(pubkey, amount) => {
-                let address = Wallet::pub_key_to_p2wpk(&pubkey, self.network)?;
-                self.send_to_address_tx(vec![address.as_str()], vec![amount], fee_rate)
+                let address = pub_key_to_p2wpkh(&pubkey, self.network)?;
+                self.send_to_address_tx(vec![address.to_string().as_str()], vec![amount], fee_rate)
             }
             Destination::Batch(batch) => {
                 let (addresses, amounts): (Vec<String>, Vec<u64>) =
@@ -941,7 +842,7 @@ impl Wallet {
                 )
             }
             Destination::P2TR(x_public_key, tap_leaves, amount) => {
-                let address = Wallet::pub_key_to_p2tr(&x_public_key, &tap_leaves, self.network)?;
+                let address = pub_key_to_p2tr(&x_public_key, &tap_leaves, self.network)?;
                 self.send_to_address_tx(vec![address.to_string().as_str()], vec![amount], fee_rate)
             }
         }
@@ -1019,24 +920,6 @@ impl Wallet {
         );
         self.send_transaction(&tx)?;
         Ok(tx)
-    }
-
-    fn pub_key_to_p2wpk(public_key: &PublicKey, network: Network) -> Result<String, WalletError> {
-        let script = ScriptBuf::new_p2wpkh(&public_key.wpubkey_hash()?);
-        let address = Address::from_script(&script, network)?;
-        Ok(address.to_string())
-    }
-
-    fn pub_key_to_p2tr(
-        x_public_key: &XOnlyPublicKey,
-        tap_leaves: &[ProtocolScript],
-        network: Network,
-    ) -> Result<Address, WalletError> {
-        let tap_spend_info =
-            scripts::build_taproot_spend_info(&Secp256k1::new(), x_public_key, tap_leaves)?;
-        let script = ScriptBuf::new_p2tr_tweaked(tap_spend_info.output_key());
-        let address = Address::from_script(&script, network)?;
-        Ok(address)
     }
 
     /// Send a transaction and update the wallet with the unconfirmed transaction

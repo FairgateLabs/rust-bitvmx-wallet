@@ -24,3 +24,7 @@ ctrlc = "3.3.0"
 bitcoind = { path = "../rust-bitcoind" }
 assert_cmd = "2.0"
 predicates = "3.1"
+
+[[bin]]
+name = "classic-wallet"
+path = "src/classic_wallet/main.rs"

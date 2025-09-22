@@ -48,6 +48,9 @@ pub use wallet::types::*;
 pub use wallet::wallet::*;
 pub use wallet::wallet_manager::*;
 
+pub mod classic_wallet;
+pub use classic_wallet::classic_wallet::*;
+
 // re-export bdk_bitcoind_rpc
 pub use bdk_bitcoind_rpc;
 

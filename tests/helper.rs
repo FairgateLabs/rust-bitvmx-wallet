@@ -1,5 +1,4 @@
-use bitvmx_wallet::wallet::config::Config;
-use bitvmx_wallet::wallet::{RegtestWallet, Wallet};
+use bitvmx_wallet::wallet::{config::Config, RegtestWallet, Wallet};
 use std::{path::Path, sync::Once};
 use tracing::info;
 use tracing_subscriber::EnvFilter;

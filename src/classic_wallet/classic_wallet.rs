@@ -1,4 +1,4 @@
-use crate::{config::ClassicWalletConfig, errors::ClassicWalletError};
+use crate::classic_wallet::{ClassicWalletConfig, ClassicWalletError};
 use bitcoin::{network, Address, Amount, OutPoint, PrivateKey, PublicKey, Transaction, Txid};
 use bitvmx_bitcoin_rpc::bitcoin_client::{BitcoinClient, BitcoinClientApi};
 use key_manager::{create_key_manager_from_config, key_manager::KeyManager, key_store::KeyStore};

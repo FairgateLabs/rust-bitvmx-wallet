@@ -43,10 +43,10 @@
 //!
 //! This project is licensed under the MIT License.
 
-pub mod config;
-pub mod errors;
 pub mod wallet;
-pub mod wallet_manager;
+pub use wallet::types::*;
+pub use wallet::wallet::*;
+pub use wallet::wallet_manager::*;
 
 // re-export bdk_bitcoind_rpc
 pub use bdk_bitcoind_rpc;

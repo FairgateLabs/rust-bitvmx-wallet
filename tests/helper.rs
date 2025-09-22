@@ -1,8 +1,8 @@
+use bitvmx_wallet::wallet::config::Config;
+use bitvmx_wallet::wallet::{RegtestWallet, Wallet};
 use std::{path::Path, sync::Once};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
-use bitvmx_wallet::config::Config;
-use bitvmx_wallet::wallet::{Wallet, RegtestWallet};
 
 static INIT: Once = Once::new();
 

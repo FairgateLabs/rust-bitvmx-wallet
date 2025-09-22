@@ -26,11 +26,8 @@
 //! bitvmx-wallet sync-wallet my_wallet
 //! ```
 
-mod cli;
-pub mod config;
-pub mod errors;
 pub mod wallet;
-pub mod wallet_manager;
+use crate::wallet::{cli, config, wallet_manager, Destination};
 
 use bitcoin::Txid;
 use clap::Parser;
@@ -40,8 +37,6 @@ use std::process;
 use tracing_subscriber::EnvFilter;
 use wallet::{RegtestWallet, Wallet};
 use wallet_manager::WalletManager;
-
-use crate::wallet::Destination;
 
 /// Configures tracing and logging for the application.
 ///

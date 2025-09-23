@@ -43,7 +43,7 @@ use crate::wallet::types::{Destination, Emission};
 use crate::wallet::utils::{
     p2tr_descriptor, p2wpkh_descriptor, pub_key_to_p2tr, pub_key_to_p2wpkh,
 };
-use crate::{config::WalletConfig, errors::WalletError};
+use crate::wallet::{config::WalletConfig, errors::WalletError};
 use bitcoin::{
     key::Secp256k1, Address, Amount, Block, FeeRate, Network, PrivateKey, Psbt, PublicKey,
     Transaction, Txid,
@@ -1170,7 +1170,7 @@ pub trait RegtestWallet {
 impl RegtestWallet for Wallet {
     fn check_network(&self) -> Result<(), WalletError> {
         if self.network != Network::Regtest {
-            use crate::errors::WalletError;
+            use crate::wallet::errors::WalletError;
 
             return Err(WalletError::RegtestOnly);
         }

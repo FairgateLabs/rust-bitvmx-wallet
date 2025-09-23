@@ -31,9 +31,8 @@
 //! ```
 
 use crate::{
-    config::Config,
-    errors::WalletError,
-    wallet::{RegtestWallet, Wallet},
+    wallet::{config::Config, errors::WalletError},
+    RegtestWallet, Wallet,
 };
 use bitcoin::PublicKey;
 use key_manager::{create_key_manager_from_config, key_manager::KeyManager, key_store::KeyStore};

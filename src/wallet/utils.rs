@@ -1,4 +1,4 @@
-use crate::errors::WalletError;
+use crate::wallet::errors::WalletError;
 use bitcoin::key::Secp256k1;
 use bitcoin::XOnlyPublicKey;
 use bitcoin::{Address, Network, PublicKey, ScriptBuf};

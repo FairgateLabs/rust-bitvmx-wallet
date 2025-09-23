@@ -940,7 +940,7 @@ impl Wallet {
         Ok(())
     }
 
-    pub fn get_wallet_tx(&self, txid: Txid) -> Result<Option<WalletTx>, WalletError> {
+    pub fn get_wallet_tx(&self, txid: Txid) -> Result<Option<WalletTx<'_>>, WalletError> {
         let tx = self.bdk_wallet.get_tx(txid);
         Ok(tx)
     }

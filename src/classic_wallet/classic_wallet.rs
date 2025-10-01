@@ -915,7 +915,7 @@ mod tests {
 
         let identifier = "test_wallet";
         let pubkey = wallet.create_wallet(identifier).unwrap();
-        let (exported_pub, exported_priv) = wallet.export_wallet(identifier).unwrap();
+        let (exported_pub, _exported_priv) = wallet.export_wallet(identifier).unwrap();
 
         assert_eq!(pubkey, exported_pub);
     }

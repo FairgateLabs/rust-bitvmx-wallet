@@ -1014,6 +1014,13 @@ impl Wallet {
         let mut emitter = self.create_emitter();
         let mut blocks_received = 0_u64;
         while let Some(emission) = emitter.next_block()? {
+            if blocks_received % 10 == 0 && blocks_received > 0 {
+                info!(
+                    "Synced {} blocks so far.... Current block {}",
+                    blocks_received,
+                    emission.block_height()
+                );
+            }
             blocks_received += 1;
             self.sync_block(emission)?;
         }

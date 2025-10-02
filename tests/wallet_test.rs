@@ -272,6 +272,7 @@ fn test_bdk_wallet_load_different_wallet_same_db() -> Result<(), anyhow::Error> 
     assert!(error_description.contains("expected wpkh(0312fb0fd3b52b4d0dfd387bfd924f875ac20cb3de085aa3bf2f06e2971f86436b)#5cdng3a7"), "Error should contain the expected descriptor");
 
     // Clear the database and load a different wallet from the same database should work
+    drop(wallet);
     Wallet::clear_db(&config.wallet)?;
     wallet = Wallet::from_private_key(
         config.bitcoin.clone(),
@@ -306,6 +307,7 @@ fn test_bdk_wallet_load_different_wallet_same_db() -> Result<(), anyhow::Error> 
     wallet.sync_wallet()?;
 
     // Clean the database and load the original wallet should have the updated balance
+    drop(wallet);
     Wallet::clear_db(&config.wallet)?;
     let mut wallet = Wallet::from_private_key(
         config.bitcoin.clone(),

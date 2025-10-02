@@ -26,17 +26,14 @@
 //! bitvmx-wallet sync-wallet my_wallet
 //! ```
 
-pub mod wallet;
-use crate::wallet::{cli, config, wallet_manager, Destination};
-
 use bitcoin::Txid;
+use bitvmx_wallet::wallet::cli::{Cli, Commands};
+use bitvmx_wallet::wallet::config::Config;
+use bitvmx_wallet::wallet::wallet_manager::WalletManager;
+use bitvmx_wallet::{Destination, RegtestWallet, Wallet};
 use clap::Parser;
-use cli::{Cli, Commands};
-use config::Config;
 use std::process;
 use tracing_subscriber::EnvFilter;
-use wallet::{RegtestWallet, Wallet};
-use wallet_manager::WalletManager;
 
 /// Configures tracing and logging for the application.
 ///

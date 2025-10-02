@@ -1,4 +1,4 @@
-use crate::classic_wallet::{ClassicWalletConfig, ClassicWalletError};
+use super::{config::ClassicWalletConfig, errors::ClassicWalletError};
 use bitcoin::{network, Address, Amount, OutPoint, PrivateKey, PublicKey, Transaction, Txid};
 use bitvmx_bitcoin_rpc::bitcoin_client::{BitcoinClient, BitcoinClientApi};
 use key_manager::{create_key_manager_from_config, key_manager::KeyManager, key_store::KeyStore};
@@ -11,6 +11,7 @@ use protocol_builder::{
         InputArgs, OutputType,
     },
 };
+
 use std::{collections::HashMap, rc::Rc};
 use storage_backend::storage::{KeyValueStore, Storage};
 use tracing::{error, info};
@@ -914,7 +915,7 @@ mod tests {
 
         let identifier = "test_wallet";
         let pubkey = wallet.create_wallet(identifier).unwrap();
-        let (exported_pub, exported_priv) = wallet.export_wallet(identifier).unwrap();
+        let (exported_pub, _exported_priv) = wallet.export_wallet(identifier).unwrap();
 
         assert_eq!(pubkey, exported_pub);
     }

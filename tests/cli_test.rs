@@ -1,11 +1,11 @@
 #![cfg(test)]
 mod helper;
+use crate::helper::{clean_and_load_config, clear_db};
 use assert_cmd::Command;
 use bitcoind::bitcoind::Bitcoind;
 use predicates::prelude::*;
-use crate::helper::{clean_and_load_config, clear_db};
 
-const PROJECT_NAME: &str = "bitvmx-wallet";
+const PROJECT_NAME: &str = "wallet";
 
 #[test]
 #[ignore]
@@ -88,7 +88,9 @@ fn test_create_wallet() -> Result<(), anyhow::Error> {
     cmd.arg("test-wallet");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains(format!("Wallet test-wallet funded with 150 BTC")));
+        .stdout(predicate::str::contains(format!(
+            "Wallet test-wallet funded with 150 BTC"
+        )));
 
     let mut cmd = Command::cargo_bin(PROJECT_NAME)?;
     cmd.arg("wallet-info");
@@ -97,7 +99,7 @@ fn test_create_wallet() -> Result<(), anyhow::Error> {
         .success()
         .stdout(predicate::str::contains(format!("Wallet: test-wallet")))
         .stdout(predicate::str::contains("- Balance: { immature: 0 BTC, trusted_pending: 0 BTC, untrusted_pending: 0 BTC, confirmed: 150 BTC }"));
-    
+
     let mut cmd = Command::cargo_bin(PROJECT_NAME)?;
     cmd.arg("send-and-mine");
     cmd.arg("test-wallet");
@@ -106,7 +108,7 @@ fn test_create_wallet() -> Result<(), anyhow::Error> {
     cmd.assert()
         .success()
         .stdout(predicate::str::contains(format!("Funded address bcrt1qs758ursh4q9z627kt3pp5yysm78ddny6txaqgw with amount 100000000 satoshis and mined 1 block")));
-    
+
     let mut cmd = Command::cargo_bin(PROJECT_NAME)?;
     cmd.arg("wallet-info");
     cmd.arg("test-wallet");
@@ -118,7 +120,7 @@ fn test_create_wallet() -> Result<(), anyhow::Error> {
     // TODO add test for partial private keys
 
     // TODO add test for edge cases
-    
+
     bitcoind.stop()?;
     Ok(())
 }

@@ -440,13 +440,17 @@ impl WalletManager {
                 "Invalid identifier: {identifier}"
             )));
         }
-        let key = StoreKey::Wallet(identifier.to_string()).get_key();
+        let store_key = StoreKey::Wallet(identifier.to_string());
+        let key = store_key.get_key();
         info!("Loading wallet {identifier} with key {key}");
         let pub_key: PublicKey = self.store.get(&key)?.unwrap();
 
+        let mut config_wallet = self.config.wallet.clone();
+        config_wallet.db_path = store_key.db_path();
+
         Wallet::from_key_manager(
             self.config.bitcoin.clone(),
-            self.config.wallet.clone(),
+            config_wallet,
             self.key_manager.clone(),
             &pub_key,
             None,
@@ -488,6 +492,9 @@ impl WalletManager {
         config_wallet.db_path = store_key.db_path();
         info!("Clearing db at {}", config_wallet.db_path);
         Wallet::clear_db(&config_wallet)?;
+
+        self.store.delete(&key)?;
+
         Ok(())
     }
 

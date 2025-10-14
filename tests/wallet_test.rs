@@ -74,7 +74,7 @@ fn test_bdk_wallet_sync_wallet() -> Result<(), anyhow::Error> {
     // Start a Bitcoin node
     let bitcoind = Bitcoind::new(
         "bitcoin-regtest",
-        "ruimarinho/bitcoin-core",
+        "bitcoin/bitcoin:29.1",
         config.bitcoin.clone(),
     );
     bitcoind.start()?;
@@ -153,7 +153,7 @@ fn test_bdk_wallet() -> Result<(), anyhow::Error> {
 
     let bitcoind = Bitcoind::new(
         "bitcoin-regtest",
-        "ruimarinho/bitcoin-core",
+        "bitcoin/bitcoin:29.1",
         config.bitcoin.clone(),
     );
     bitcoind.start()?;
@@ -229,7 +229,7 @@ fn test_bdk_wallet_load_different_wallet_same_db() -> Result<(), anyhow::Error> 
 
     let bitcoind = Bitcoind::new(
         "bitcoin-regtest",
-        "ruimarinho/bitcoin-core",
+        "bitcoin/bitcoin:29.1",
         config.bitcoin.clone(),
     );
     bitcoind.start()?;
@@ -334,7 +334,7 @@ fn test_bdk_wallet_balance() -> Result<(), anyhow::Error> {
 
     let bitcoind = Bitcoind::new(
         "bitcoin-regtest",
-        "ruimarinho/bitcoin-core",
+        "bitcoin/bitcoin:29.1",
         config.bitcoin.clone(),
     );
     bitcoind.start()?;
@@ -611,7 +611,7 @@ fn test_bdk_wallet_balance_with_change_address() -> Result<(), anyhow::Error> {
 
     let bitcoind = Bitcoind::new(
         "bitcoin-regtest",
-        "ruimarinho/bitcoin-core",
+        "bitcoin/bitcoin:29.1",
         config.bitcoin.clone(),
     );
     bitcoind.start()?;
@@ -726,7 +726,7 @@ fn test_bdk_wallet_build_tx() -> Result<(), anyhow::Error> {
 
     let bitcoind = Bitcoind::new(
         "bitcoin-regtest",
-        "ruimarinho/bitcoin-core",
+        "bitcoin/bitcoin:29.1",
         config.bitcoin.clone(),
     );
     bitcoind.start()?;
@@ -825,7 +825,7 @@ fn test_regtest_wallet() -> Result<(), anyhow::Error> {
 
     let bitcoind = Bitcoind::new(
         "bitcoin-regtest",
-        "ruimarinho/bitcoin-core",
+        "bitcoin/bitcoin:29.1",
         config.bitcoin.clone(),
     );
     bitcoind.start()?;
@@ -905,7 +905,7 @@ fn test_send_funds() -> Result<(), anyhow::Error> {
 
     let bitcoind = Bitcoind::new(
         "bitcoin-regtest",
-        "ruimarinho/bitcoin-core",
+        "bitcoin/bitcoin:29.1",
         config.bitcoin.clone(),
     );
     bitcoind.start()?;

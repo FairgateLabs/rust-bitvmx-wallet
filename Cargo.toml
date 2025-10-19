@@ -2,6 +2,7 @@
 name = "bitvmx-wallet"
 version = "0.0.2"
 edition = "2021"
+readme = "README.md"
 
 [dependencies]
 bitvmx-protocol-builder = { git = "https://github.com/FairgateLabs/rust-bitvmx-protocol-builder.git", branch = "v.0.0.2" }

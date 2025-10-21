@@ -57,10 +57,13 @@ use bdk_bitcoind_rpc::{
     bitcoincore_rpc::{jsonrpc, Client, RpcApi},
     BlockEvent, Emitter, MempoolEvent,
 };
+#[allow(deprecated)]
+// TODO: Remove this once the deprecated methods are removed from the BDK wallet
+use bdk_wallet::SignOptions;
 use bdk_wallet::{
     coin_selection::DefaultCoinSelectionAlgorithm, rusqlite::Connection,
-    wallet_name_from_descriptor, Balance, KeychainKind, LocalOutput, PersistedWallet, SignOptions,
-    TxBuilder, TxOrdering, Wallet as BdkWallet, WalletTx,
+    wallet_name_from_descriptor, Balance, KeychainKind, LocalOutput, PersistedWallet, TxBuilder,
+    TxOrdering, Wallet as BdkWallet, WalletTx,
 };
 use ctrlc;
 use std::{
@@ -688,6 +691,7 @@ impl Wallet {
     /// )?;
     /// println!("Transaction created: {}", tx.compute_txid());
     /// ```
+    #[allow(deprecated)] // TODO: Remove this once the deprecated methods are removed from the BDK wallet
     fn send_to_address_tx(
         &mut self,
         to_addresses: Vec<&str>,
@@ -960,6 +964,7 @@ impl Wallet {
         self.bdk_wallet.build_tx()
     }
 
+    #[allow(deprecated)] // TODO: Remove this once the deprecated methods are removed from the BDK wallet
     pub fn sign(
         &mut self,
         psbt: &mut Psbt,
@@ -1184,6 +1189,7 @@ impl RegtestWallet for Wallet {
         Ok(())
     }
 
+    #[allow(deprecated)] // TODO: Remove this once the deprecated methods are removed from the BDK wallet
     fn export_wallet(&self) -> Result<(Vec<String>, Vec<String>), WalletError> {
         let mut private_keys = Vec::new();
         let mut public_keys = Vec::new();

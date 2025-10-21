@@ -3,7 +3,10 @@ mod helper;
 use bitcoin::{Address, Amount, Network, PublicKey, ScriptBuf};
 use bitvmx_wallet::wallet::{Destination, RegtestWallet, Wallet};
 
-use bdk_wallet::{SignOptions, TxOrdering};
+#[allow(deprecated)]
+// TODO: Remove this once the deprecated methods are removed from the BDK wallet
+use bdk_wallet::SignOptions;
+use bdk_wallet::TxOrdering;
 
 use crate::helper::clean_and_load_config;
 use anyhow::Result;
@@ -721,6 +724,8 @@ fn test_bdk_wallet_balance_with_change_address() -> Result<(), anyhow::Error> {
 
 #[test]
 #[ignore]
+#[allow(deprecated)]
+// TODO: Remove this once the deprecated methods are removed from the BDK wallet
 fn test_bdk_wallet_build_tx() -> Result<(), anyhow::Error> {
     let config = clean_and_load_config("config/regtest.yaml")?;
 

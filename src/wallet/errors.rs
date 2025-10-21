@@ -113,6 +113,8 @@ pub enum WalletError {
     ///
     /// Occurs when there are issues signing Bitcoin transactions.
     #[error("Error when signing transaction: {0}")]
+    #[allow(deprecated)]
+    // TODO: Remove this once the deprecated methods are removed from the BDK wallet
     SignerError(#[from] bdk_wallet::signer::SignerError),
 
     /// Header application error.

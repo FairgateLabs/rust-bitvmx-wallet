@@ -1,3 +1,5 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use crate::wallet::errors::WalletError;
 use bitcoin::key::Secp256k1;
 use bitcoin::XOnlyPublicKey;
@@ -148,4 +150,28 @@ pub fn p2tr_descriptor(private_key: &str) -> Result<String, WalletError> {
     // tr(KEY) or tr(KEY,TREE) (top level only): P2TR output with the specified key as internal key, and optionally a tree of script paths.
     // See https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md#examples
     Ok(format!("tr({private_key})"))
+}
+
+/// Gets the current Unix timestamp in seconds.
+///
+/// This function returns the current time as a Unix timestamp (seconds since
+/// the Unix epoch: January 1, 1970, 00:00:00 UTC).
+///
+/// # Returns
+///
+/// A `Result` containing:
+/// * `Ok(u64)` - The current Unix timestamp in seconds
+/// * `Err(WalletError)` - If there's an error getting the current time
+///
+/// # Example
+///
+/// ```rust
+/// use bitvmx_wallet::wallet::utils::get_current_timestamp;
+///
+/// let timestamp = get_current_timestamp()?;
+/// println!("Current timestamp: {}", timestamp);
+/// ```
+pub fn get_current_timestamp() -> Result<u64, WalletError> {
+    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    Ok(timestamp)
 }

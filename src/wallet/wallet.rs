@@ -41,7 +41,7 @@
 
 use crate::wallet::types::{Destination, Emission};
 use crate::wallet::utils::{
-    p2tr_descriptor, p2wpkh_descriptor, pub_key_to_p2tr, pub_key_to_p2wpkh,
+    self, p2tr_descriptor, p2wpkh_descriptor, pub_key_to_p2tr, pub_key_to_p2wpkh,
 };
 use crate::wallet::{config::WalletConfig, errors::WalletError};
 use bitcoin::{
@@ -930,14 +930,14 @@ impl Wallet {
     pub fn send_transaction(&mut self, tx: &Transaction) -> Result<Txid, WalletError> {
         let tx_hash = self.rpc_client.send_raw_transaction(tx)?;
         // Sync the wallet to update transactions in the mempool
-        let last_seen_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+        let last_seen_timestamp = utils::get_current_timestamp()?;
         self.bdk_wallet
             .apply_unconfirmed_txs(vec![(tx.clone(), last_seen_timestamp)]);
         Ok(tx_hash)
     }
 
     pub fn update_with_tx(&mut self, tx: &Transaction) -> Result<(), WalletError> {
-        let last_seen_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+        let last_seen_timestamp = utils::get_current_timestamp()?;
         self.bdk_wallet
             .apply_unconfirmed_txs(vec![(tx.clone(), last_seen_timestamp)]);
         self.persist_wallet()?;
@@ -1010,6 +1010,21 @@ impl Wallet {
             .apply_unconfirmed_txs(mempool_emission.update);
         self.persist_wallet()?;
         trace!("Applied evicted and unconfirmed transactions");
+        Ok(())
+    }
+
+    pub fn apply_unconfirmed_txs(
+        &mut self,
+        transactions: Vec<Transaction>,
+    ) -> Result<(), WalletError> {
+        let timestamp = utils::get_current_timestamp()?;
+        self.bdk_wallet
+            .apply_unconfirmed_txs(transactions.iter().map(|tx| (tx.clone(), timestamp)));
+        self.persist_wallet()?;
+        trace!(
+            "Manually applied {} unconfirmed transactions",
+            transactions.len()
+        );
         Ok(())
     }
 

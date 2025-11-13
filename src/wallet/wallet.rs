@@ -84,7 +84,7 @@ use std::{
     str::FromStr,
     sync::{mpsc::channel, Arc},
     thread::spawn,
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    time::Instant,
 };
 
 /// A Bitcoin wallet instance with full functionality.

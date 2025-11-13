@@ -179,11 +179,14 @@ pub fn p2tr_descriptor(private_key: &str) -> Result<String, WalletError> {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,no_run
 /// use bitvmx_wallet::wallet::utils::get_current_timestamp;
 ///
+/// # fn example() -> Result<(), anyhow::Error> {
 /// let timestamp = get_current_timestamp()?;
 /// println!("Current timestamp: {}", timestamp);
+/// # Ok(())
+/// # }
 /// ```
 pub fn get_current_timestamp() -> Result<u64, WalletError> {
     let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();

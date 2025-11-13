@@ -14,8 +14,7 @@
 //! ## Examples
 //!
 //! ```rust
-//! use bitvmx_wallet::wallet_manager::WalletManager;
-//! use bitvmx_wallet::config::Config;
+//! use bitvmx_wallet::{WalletManager, wallet::config::Config};
 //!
 //! // Create a wallet manager
 //! let wallet_manager = WalletManager::new(config)?;
@@ -92,7 +91,7 @@ impl StoreKey {
 /// ## Examples
 ///
 /// ```rust
-/// use bitvmx_wallet::wallet_manager::WalletManager;
+/// use bitvmx_wallet::WalletManager;
 ///
 /// // Create a wallet manager
 /// let wallet_manager = WalletManager::new(config)?;
@@ -139,7 +138,7 @@ impl WalletManager {
     /// # Example
     ///
     /// ```rust
-    /// use bitvmx_wallet::wallet_manager::WalletManager;
+    /// use bitvmx_wallet::WalletManager;
     ///
     /// let wallet_manager = WalletManager::new(config)?;
     /// ```

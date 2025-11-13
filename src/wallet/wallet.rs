@@ -15,7 +15,7 @@
 //! ## Examples
 //!
 //! ```rust
-//! use bitvmx_wallet::{wallet::Wallet, config::WalletConfig};
+//! use bitvmx_wallet::{Wallet, wallet::config::WalletConfig};
 //! use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
 //! use bitcoin::PublicKey;
 //!
@@ -184,7 +184,7 @@ impl Wallet {
     /// # Example
     ///
     /// ```rust
-    /// use bitvmx_wallet::wallet::Wallet;
+    /// use bitvmx_wallet::Wallet;
     /// use bitcoin::PublicKey;
     ///
     /// let wallet = Wallet::from_key_manager(
@@ -247,7 +247,7 @@ impl Wallet {
     /// # Example
     ///
     /// ```rust
-    /// use bitvmx_wallet::wallet::Wallet;
+    /// use bitvmx_wallet::Wallet;
     ///
     /// // Create wallet with change descriptor (recommended)
     /// // This allows using trusted unconfirmed UTXOs
@@ -314,7 +314,7 @@ impl Wallet {
     /// # Example
     ///
     /// ```rust
-    /// use bitvmx_wallet::wallet::Wallet;
+    /// use bitvmx_wallet::Wallet;
     ///
     /// // Create wallet with change descriptor (recommended)
     /// // This allows using trusted unconfirmed UTXOs
@@ -374,7 +374,7 @@ impl Wallet {
     /// # Example
     ///
     /// ```rust
-    /// use bitvmx_wallet::wallet::Wallet;
+    /// use bitvmx_wallet::Wallet;
     ///
     /// // Create wallet with change descriptor (recommended)
     /// // This allows using trusted unconfirmed UTXOs
@@ -430,7 +430,7 @@ impl Wallet {
     /// # Example
     ///
     /// ```rust
-    /// use bitvmx_wallet::wallet::Wallet;
+    /// use bitvmx_wallet::Wallet;
     ///
     /// let partial_keys = vec![
     ///     "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
@@ -506,7 +506,7 @@ impl Wallet {
     /// # Example
     ///
     /// ```rust
-    /// use bitvmx_wallet::wallet::Wallet;
+    /// use bitvmx_wallet::Wallet;
     /// use bitcoin::PublicKey;
     ///
     /// // Create wallet with change descriptor (recommended)
@@ -798,7 +798,7 @@ impl Wallet {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use rust_bitvmx_wallet::{Wallet, Destination};
+    /// # use bitvmx_wallet::{Wallet, Destination};
     /// # use bitcoin::PublicKey;
     /// # let mut wallet = Wallet::new(/* ... */).unwrap();
     ///
@@ -887,7 +887,7 @@ impl Wallet {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use rust_bitvmx_wallet::{Wallet, Destination};
+    /// # use bitvmx_wallet::{Wallet, Destination};
     /// # use bitcoin::PublicKey;
     /// # let mut wallet = Wallet::new(/* ... */).unwrap();
     ///

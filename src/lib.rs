@@ -15,15 +15,20 @@
 //!
 //! ## Modules
 //!
-//! - [`config`] - Configuration management for wallet and network settings
-//! - [`errors`] - Error types and handling for wallet operations
-//! - [`wallet`] - Core wallet functionality and Bitcoin operations
-//! - [`wallet_manager`] - Multi-wallet management for testing and development
+//! - [`wallet`] - Core wallet module containing:
+//!   - [`wallet::config`] - Configuration management for wallet and network settings
+//!   - [`wallet::errors`] - Error types and handling for wallet operations
+//!   - [`wallet::wallet`] - Core wallet functionality and Bitcoin operations
+//!   - [`wallet::wallet_manager`] - Multi-wallet management for testing and development
+//!   - [`wallet::types`] - Type definitions for destinations and other wallet types
+//!   - [`wallet::utils`] - Utility functions for address conversion and descriptor generation
+//!   - [`wallet::cli`] - Command-line interface for wallet operations
+//! - [`classic_wallet`] - Classic wallet implementation with alternative interface
 //!
 //! ## Quick Start
 //!
 //! ```rust
-//! use bitvmx_wallet::{config::Config, wallet::Wallet, wallet_manager::WalletManager};
+//! use bitvmx_wallet::{Wallet, WalletManager, wallet::config::Config};
 //!
 //! // Load configuration
 //! let config = Config::new(/* ... */)?;

@@ -56,15 +56,17 @@ impl WalletConfig {
     ///
     /// # Example
     ///
-    /// ```rust
-    /// use bitvmx_wallet::wallet::config::WalletConfig;
-    ///
+    /// ```rust,no_run
+    /// # use bitvmx_wallet::wallet::config::WalletConfig;
+    /// # fn example() -> Result<(), anyhow::Error> {
     /// let config = WalletConfig::new(
     ///     "/path/to/wallet.db".to_string(),
     ///     Some(800000),
     ///     Some("L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o".to_string()), // receive key
     ///     Some("KxJk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8".to_string()), // change key - must be different from receive key
     /// )?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn new(
         db_path: String,
@@ -131,19 +133,33 @@ impl Config {
     ///
     /// # Example
     ///
-    /// ```rust
-    /// use bitvmx_wallet::wallet::config::{Config, WalletConfig};
-    /// use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
-    /// use key_manager::config::KeyManagerConfig;
-    /// use storage_backend::storage_config::StorageConfig;
-    ///
+    /// ```rust,no_run
+    /// # use bitvmx_wallet::wallet::config::{Config, WalletConfig};
+    /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+    /// # use key_manager::config::KeyManagerConfig;
+    /// # use storage_backend::storage_config::StorageConfig;
+    /// # use bitcoin::Network;
+    /// # fn example() -> Result<(), anyhow::Error> {
+    /// # let bitcoin_config = RpcConfig {
+    /// #     url: "http://localhost:18443".to_string(),
+    /// #     username: "foo".to_string(),
+    /// #     password: "rpcpassword".to_string(),
+    /// #     network: Network::Regtest,
+    /// #     wallet: "test_wallet".to_string(),
+    /// # };
+    /// # // Note: These configs must be provided - typically loaded from YAML file
+    /// # let key_manager_config: KeyManagerConfig = todo!();
+    /// # let key_storage: StorageConfig = todo!();
+    /// # let storage: StorageConfig = todo!();
     /// let config = Config::new(
-    ///     RpcConfig::default(),
-    ///     KeyManagerConfig::default(),
-    ///     StorageConfig::default(),
-    ///     StorageConfig::default(),
+    ///     bitcoin_config,
+    ///     key_manager_config,
+    ///     key_storage,
+    ///     storage,
     ///     WalletConfig::new("/path/to/wallet.db".to_string(), None, None, None)?,
     /// )?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn new(
         bitcoin: RpcConfig,

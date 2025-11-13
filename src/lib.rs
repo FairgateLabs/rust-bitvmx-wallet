@@ -27,17 +27,22 @@
 //!
 //! ## Quick Start
 //!
-//! ```rust
-//! use bitvmx_wallet::{Wallet, WalletManager, wallet::config::Config};
+//! ```rust,no_run
+//! use bitvmx_wallet::{Wallet, WalletManager, wallet::{config::Config, errors::WalletError}};
 //!
-//! // Load configuration
-//! let config = Config::new(/* ... */)?;
+//! # fn main() -> Result<(), WalletError> {
+//! // Load configuration from YAML file
+//! let config = bitvmx_settings::settings::load_config_file::<Config>(Some(
+//!     "config/regtest.yaml".to_string()
+//! ))?;
 //!
 //! // Create wallet manager
 //! let wallet_manager = WalletManager::new(config)?;
 //!
 //! // Create a new wallet (single descriptor wallet)
 //! let wallet = wallet_manager.create_new_wallet("my_wallet")?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! ## Examples

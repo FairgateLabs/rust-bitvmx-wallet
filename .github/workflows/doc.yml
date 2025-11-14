@@ -55,6 +55,11 @@ jobs:
       - name: Generate docs
         run: cargo doc --no-deps
 
+      - name: Add redirect #it creates a minimal index.html to forward to the right page, because rustdoc doesn't create one.
+        run: |
+          PACKAGE_NAME=$(grep '^name = ' Cargo.toml | head -1 | sed 's/name = "\(.*\)"/\1/' | sed 's/[ -]/_/g')
+          echo '<meta http-equiv="refresh" content="0;url='"$PACKAGE_NAME"'/index.html">' > target/doc/index.html
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 

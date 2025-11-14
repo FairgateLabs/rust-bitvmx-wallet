@@ -24,13 +24,16 @@ use protocol_builder::scripts::{self, ProtocolScript};
 ///
 /// # Example
 ///
-/// ```rust
-/// use bitcoin::{Network, PublicKey};
-/// use bitvmx_wallet::wallet::utils::pub_key_to_p2wpkh;
-///
-/// let public_key = PublicKey::from_str("...").unwrap();
+/// ```rust,no_run
+/// # use bitcoin::{Network, PublicKey};
+/// # use bitvmx_wallet::wallet::{utils::pub_key_to_p2wpkh, errors::WalletError};
+/// # use std::str::FromStr;
+/// # fn example() -> Result<(), WalletError> {
+/// let public_key = PublicKey::from_str("02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9").unwrap();
 /// let address = pub_key_to_p2wpkh(&public_key, Network::Testnet)?;
 /// println!("P2WPKH Address: {}", address);
+/// # Ok(())
+/// # }
 /// ```
 pub fn pub_key_to_p2wpkh(public_key: &PublicKey, network: Network) -> Result<Address, WalletError> {
     let script = ScriptBuf::new_p2wpkh(&public_key.wpubkey_hash()?);
@@ -61,15 +64,18 @@ pub fn pub_key_to_p2wpkh(public_key: &PublicKey, network: Network) -> Result<Add
 ///
 /// # Example
 ///
-/// ```rust
-/// use bitcoin::{Network, XOnlyPublicKey};
-/// use bitvmx_wallet::wallet::utils::pub_key_to_p2tr;
-/// use protocol_builder::scripts::ProtocolScript;
-///
-/// let x_pubkey = XOnlyPublicKey::from_str("...").unwrap();
+/// ```rust,no_run
+/// # use bitcoin::{Network, XOnlyPublicKey};
+/// # use bitvmx_wallet::wallet::{utils::pub_key_to_p2tr, errors::WalletError};
+/// # use protocol_builder::scripts::ProtocolScript;
+/// # use std::str::FromStr;
+/// # fn example() -> Result<(), WalletError> {
+/// let x_pubkey = XOnlyPublicKey::from_str("f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9").unwrap();
 /// let tap_leaves = vec![/* protocol scripts */];
 /// let address = pub_key_to_p2tr(&x_pubkey, &tap_leaves, Network::Testnet)?;
 /// println!("P2TR Address: {}", address);
+/// # Ok(())
+/// # }
 /// ```
 pub fn pub_key_to_p2tr(
     x_public_key: &XOnlyPublicKey,
@@ -105,11 +111,15 @@ pub fn pub_key_to_p2tr(
 ///
 /// # Example
 ///
-/// ```rust
-/// let descriptor = Wallet::p2wpkh_descriptor(
+/// ```rust,no_run
+/// # use bitvmx_wallet::wallet::{utils::p2wpkh_descriptor, errors::WalletError};
+/// # fn example() -> Result<(), WalletError> {
+/// let descriptor = p2wpkh_descriptor(
 ///     "L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o"
 /// )?;
 /// // Returns: "wpkh(L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o)"
+/// # Ok(())
+/// # }
 /// ```
 pub fn p2wpkh_descriptor(private_key: &str) -> Result<String, WalletError> {
     // This descriptor for the wallet, wpkh indicates native segwit private key in wif format
@@ -139,11 +149,15 @@ pub fn p2wpkh_descriptor(private_key: &str) -> Result<String, WalletError> {
 ///
 /// # Example
 ///
-/// ```rust
-/// let descriptor = Wallet::p2tr_descriptor(
+/// ```rust,no_run
+/// # use bitvmx_wallet::wallet::{utils::p2tr_descriptor, errors::WalletError};
+/// # fn example() -> Result<(), WalletError> {
+/// let descriptor = p2tr_descriptor(
 ///     "L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o"
 /// )?;
 /// // Returns: "tr(L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o)"
+/// # Ok(())
+/// # }
 /// ```
 pub fn p2tr_descriptor(private_key: &str) -> Result<String, WalletError> {
     // P2TR output with the specified key as internal key, and optionally a tree of script paths.
@@ -165,11 +179,14 @@ pub fn p2tr_descriptor(private_key: &str) -> Result<String, WalletError> {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,no_run
 /// use bitvmx_wallet::wallet::utils::get_current_timestamp;
 ///
+/// # fn example() -> Result<(), anyhow::Error> {
 /// let timestamp = get_current_timestamp()?;
 /// println!("Current timestamp: {}", timestamp);
+/// # Ok(())
+/// # }
 /// ```
 pub fn get_current_timestamp() -> Result<u64, WalletError> {
     let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();

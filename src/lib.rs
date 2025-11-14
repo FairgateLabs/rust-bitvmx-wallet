@@ -15,24 +15,34 @@
 //!
 //! ## Modules
 //!
-//! - [`config`] - Configuration management for wallet and network settings
-//! - [`errors`] - Error types and handling for wallet operations
-//! - [`wallet`] - Core wallet functionality and Bitcoin operations
-//! - [`wallet_manager`] - Multi-wallet management for testing and development
+//! - [`wallet`] - Core wallet module containing:
+//!   - [`wallet::config`] - Configuration management for wallet and network settings
+//!   - [`wallet::errors`] - Error types and handling for wallet operations
+//!   - [`wallet::wallet`] - Core wallet functionality and Bitcoin operations
+//!   - [`wallet::wallet_manager`] - Multi-wallet management for testing and development
+//!   - [`wallet::types`] - Type definitions for destinations and other wallet types
+//!   - [`wallet::utils`] - Utility functions for address conversion and descriptor generation
+//!   - [`wallet::cli`] - Command-line interface for wallet operations
+//! - [`classic_wallet`] - Classic wallet implementation with alternative interface
 //!
 //! ## Quick Start
 //!
-//! ```rust
-//! use bitvmx_wallet::{config::Config, wallet::Wallet, wallet_manager::WalletManager};
+//! ```rust,no_run
+//! use bitvmx_wallet::{Wallet, WalletManager, wallet::{config::Config, errors::WalletError}};
 //!
-//! // Load configuration
-//! let config = Config::new(/* ... */)?;
+//! # fn main() -> Result<(), WalletError> {
+//! // Load configuration from YAML file
+//! let config = bitvmx_settings::settings::load_config_file::<Config>(Some(
+//!     "config/regtest.yaml".to_string()
+//! ))?;
 //!
 //! // Create wallet manager
 //! let wallet_manager = WalletManager::new(config)?;
 //!
 //! // Create a new wallet (single descriptor wallet)
 //! let wallet = wallet_manager.create_new_wallet("my_wallet")?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! ## Examples

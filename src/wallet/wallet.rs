@@ -14,29 +14,39 @@
 //!
 //! ## Examples
 //!
-//! ```rust
-//! use bitvmx_wallet::{wallet::Wallet, config::WalletConfig};
+//! ```rust,no_run
+//! use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}};
 //! use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
-//! use bitcoin::PublicKey;
+//! use bitcoin::Network;
 //!
-//! // Create a wallet from a private key with change descriptor
-//! // Change descriptors allow the wallet to use trusted unconfirmed UTXOs
-//! let wallet = Wallet::from_private_key(
-//!     rpc_config,
-//!     wallet_config,
-//!     "L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o", // receive key
-//!     Some("KxJk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8"), // change key - must be different from receive key
-//! )?;
+//! # fn main() -> Result<(), anyhow::Error> {
+//!     # let rpc_config = RpcConfig {
+//!     #     url: "http://localhost:18443".to_string(),
+//!     #     username: "foo".to_string(),
+//!     #     password: "rpcpassword".to_string(),
+//!     #     network: Network::Regtest,
+//!     #     wallet: "test_wallet".to_string(),
+//!     # };
+//!     # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
+//!     // Create a wallet from a private key with change descriptor
+//!     // Change descriptors allow the wallet to use trusted unconfirmed UTXOs
+//!     let mut wallet = Wallet::from_private_key(
+//!         rpc_config,
+//!         wallet_config,
+//!         "L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o", // receive key
+//!         Some("KxJk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8"), // change key - must be different from receive key
+//!     )?;
 //!
-//! // Sync the wallet
-//! wallet.sync_wallet()?;
+//!     // Sync the wallet
+//!     wallet.sync_wallet()?;
 //!
-//! // Send a transaction
-//! let tx = wallet.send_to_address(
-//!     "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
-//!     100000, // 0.001 BTC
-//!     Some(5), // 5 sat/vB fee rate
-//! )?;
+//!     // Send a transaction
+//!     let tx = wallet.send_funds(
+//!         bitvmx_wallet::Destination::Address("bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh".to_string(), 100000),
+//!         Some(5), // 5 sat/vB fee rate
+//!     )?;
+//!  #  Ok(())
+//! }
 //! ```
 
 use crate::wallet::types::{Destination, Emission};
@@ -74,7 +84,7 @@ use std::{
     str::FromStr,
     sync::{mpsc::channel, Arc},
     thread::spawn,
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    time::Instant,
 };
 
 /// A Bitcoin wallet instance with full functionality.
@@ -95,36 +105,48 @@ use std::{
 ///
 /// ## Examples
 ///
-/// ```rust
-/// use bitvmx_wallet::wallet::Wallet;
+/// ```rust,no_run
+/// use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}};
+/// use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+/// use bitcoin::Network;
 ///
-/// // Create a wallet from a private key with change descriptor
-/// // Change descriptors allow the wallet to use trusted unconfirmed UTXOs
-/// let mut wallet = Wallet::from_private_key(
-///     rpc_config,
-///     wallet_config,
-///     "L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o", // receive key
-///     Some("KxJk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8"), // change key - must be different from receive key
-/// )?;
+/// # fn main() -> Result<(), anyhow::Error> {
+///     # let rpc_config = RpcConfig {
+///     #     url: "http://localhost:18443".to_string(),
+///     #     username: "foo".to_string(),
+///     #     password: "rpcpassword".to_string(),
+///     #     network: Network::Regtest,
+///     #     wallet: "test_wallet".to_string(),
+///     # };
+///     # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
+///     // Create a wallet from a private key with change descriptor
+///     // Change descriptors allow the wallet to use trusted unconfirmed UTXOs
+///     let mut wallet = Wallet::from_private_key(
+///         rpc_config,
+///         wallet_config,
+///         "L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o", // receive key
+///         Some("KxJk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8"), // change key - must be different from receive key
+///     )?;
 ///
-/// // Sync with the blockchain
-/// wallet.sync_wallet()?;
+///     // Sync with the blockchain
+///     wallet.sync_wallet()?;
 ///
-/// // Get wallet balance
-/// let balance = wallet.balance();
-/// println!("Balance: {} sats", balance.confirmed);
+///     // Get wallet balance
+///     let balance = wallet.balance();
+///     println!("Balance: {} sats", balance.confirmed);
 ///
-/// // Generate a receiving address
-/// let address = wallet.receive_address()?;
-/// println!("Receive address: {}", address);
+///     // Generate a receiving address
+///     let address = wallet.receive_address()?;
+///     println!("Receive address: {}", address);
 ///
-/// // Send a transaction
-/// let tx = wallet.send_to_address(
-///     "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
-///     100000, // 0.001 BTC
-///     Some(5), // 5 sat/vB fee rate
-/// )?;
-/// println!("Transaction sent: {}", tx.compute_txid());
+///     // Send a transaction
+///     let tx = wallet.send_funds(
+///         bitvmx_wallet::Destination::Address("bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh".to_string(), 100000),
+///         Some(5), // 5 sat/vB fee rate
+///     )?;
+///     println!("Transaction sent: {}", tx.compute_txid());
+///  #  Ok(())
+/// }
 /// ```
 pub struct Wallet {
     /// The Bitcoin network this wallet operates on (mainnet, testnet, or regtest).
@@ -183,10 +205,25 @@ impl Wallet {
     ///
     /// # Example
     ///
-    /// ```rust
-    /// use bitvmx_wallet::wallet::Wallet;
-    /// use bitcoin::PublicKey;
-    ///
+    /// ```rust,no_run
+    /// # use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}};
+    /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+    /// # use bitcoin::PublicKey;
+    /// # use key_manager::key_manager::KeyManager;
+    /// # use std::{rc::Rc, str::FromStr};
+    /// # fn example() -> Result<(), anyhow::Error> {
+    /// # let bitcoin_config = RpcConfig {
+    /// #     url: "http://localhost:18443".to_string(),
+    /// #     username: "foo".to_string(),
+    /// #     password: "rpcpassword".to_string(),
+    /// #     network: bitcoin::Network::Regtest,
+    /// #     wallet: "test_wallet".to_string(),
+    /// # };
+    /// let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
+    ///  // Note: key_manager must be provided - this is just a placeholder for the example
+    /// let key_manager: Rc<KeyManager> = todo!();
+    /// let public_key = PublicKey::from_str("02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9")?;
+    /// let change_public_key = PublicKey::from_str("03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd")?;
     /// let wallet = Wallet::from_key_manager(
     ///     bitcoin_config,
     ///     wallet_config,
@@ -194,6 +231,8 @@ impl Wallet {
     ///     &public_key,
     ///     Some(&change_public_key),
     /// )?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn from_key_manager(
         bitcoin_config: RpcConfig,
@@ -246,9 +285,22 @@ impl Wallet {
     ///
     /// # Example
     ///
-    /// ```rust
-    /// use bitvmx_wallet::wallet::Wallet;
-    ///
+    /// ```rust,no_run
+    /// # use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}};
+    /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+    /// # use key_manager::key_manager::KeyManager;
+    /// # use std::rc::Rc;
+    /// # fn example() -> Result<(), anyhow::Error> {
+    /// # let bitcoin_config = RpcConfig {
+    /// #     url: "http://localhost:18443".to_string(),
+    /// #     username: "foo".to_string(),
+    /// #     password: "rpcpassword".to_string(),
+    /// #     network: bitcoin::Network::Regtest,
+    /// #     wallet: "test_wallet".to_string(),
+    /// # };
+    /// # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
+    /// # // Note: key_manager must be provided - this is just a placeholder for the example
+    /// # let key_manager: Rc<KeyManager> = todo!();
     /// // Create wallet with change descriptor (recommended)
     /// // This allows using trusted unconfirmed UTXOs
     /// let wallet = Wallet::from_derive_keypair(
@@ -258,6 +310,8 @@ impl Wallet {
     ///     0, // Use index 0 for the main key
     ///     Some(1), // Use index 1 for change addresses (must be different from main key)
     /// )?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn from_derive_keypair(
         bitcoin_config: RpcConfig,
@@ -313,9 +367,18 @@ impl Wallet {
     ///
     /// # Example
     ///
-    /// ```rust
-    /// use bitvmx_wallet::wallet::Wallet;
-    ///
+    /// ```rust,no_run
+    /// # use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}};
+    /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+    /// # fn example() -> Result<(), anyhow::Error> {
+    /// # let bitcoin_config = RpcConfig {
+    /// #     url: "http://localhost:18443".to_string(),
+    /// #     username: "foo".to_string(),
+    /// #     password: "rpcpassword".to_string(),
+    /// #     network: bitcoin::Network::Regtest,
+    /// #     wallet: "test_wallet".to_string(),
+    /// # };
+    /// # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
     /// // Create wallet with change descriptor (recommended)
     /// // This allows using trusted unconfirmed UTXOs
     /// let wallet = Wallet::from_private_key(
@@ -324,6 +387,8 @@ impl Wallet {
     ///     "L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o", // receive key
     ///     Some("KxJk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8"), // change key - must be different from receive key
     /// )?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn from_private_key(
         bitcoin_config: RpcConfig,
@@ -373,15 +438,26 @@ impl Wallet {
     ///
     /// # Example
     ///
-    /// ```rust
-    /// use bitvmx_wallet::wallet::Wallet;
-    ///
+    /// ```rust,no_run
+    /// # use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}};
+    /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+    /// # fn example() -> Result<(), anyhow::Error> {
+    /// # let bitcoin_config = RpcConfig {
+    /// #     url: "http://localhost:18443".to_string(),
+    /// #     username: "foo".to_string(),
+    /// #     password: "rpcpassword".to_string(),
+    /// #     network: bitcoin::Network::Regtest,
+    /// #     wallet: "test_wallet".to_string(),
+    /// # };
+    /// # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
     /// // Create wallet with change descriptor (recommended)
     /// // This allows using trusted unconfirmed UTXOs
     /// let wallet = Wallet::from_config(
     ///     bitcoin_config,
     ///     wallet_config, // Contains receive_key and optional change_key (must be different)
     /// )?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn from_config(
         bitcoin_config: RpcConfig,
@@ -429,9 +505,22 @@ impl Wallet {
     ///
     /// # Example
     ///
-    /// ```rust
-    /// use bitvmx_wallet::wallet::Wallet;
-    ///
+    /// ```rust,no_run
+    /// # use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}};
+    /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+    /// # use key_manager::key_manager::KeyManager;
+    /// # use std::rc::Rc;
+    /// # fn example() -> Result<(), anyhow::Error> {
+    /// # let bitcoin_config = RpcConfig {
+    /// #     url: "http://localhost:18443".to_string(),
+    /// #     username: "foo".to_string(),
+    /// #     password: "rpcpassword".to_string(),
+    /// #     network: bitcoin::Network::Regtest,
+    /// #     wallet: "test_wallet".to_string(),
+    /// # };
+    /// # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
+    /// # // Note: key_manager must be provided - this is just a placeholder for the example
+    /// # let key_manager: Rc<KeyManager> = todo!();
     /// let partial_keys = vec![
     ///     "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
     ///     "fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321".to_string(),
@@ -443,6 +532,8 @@ impl Wallet {
     ///     partial_keys,
     ///     key_manager,
     /// )?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn from_partial_keys(
         bitcoin_config: RpcConfig,
@@ -505,10 +596,21 @@ impl Wallet {
     ///
     /// # Example
     ///
-    /// ```rust
-    /// use bitvmx_wallet::wallet::Wallet;
-    /// use bitcoin::PublicKey;
-    ///
+    /// ```rust,no_run
+    /// # use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}};
+    /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+    /// # use bitcoin::PublicKey;
+    /// # use std::str::FromStr;
+    /// # fn example() -> Result<(), anyhow::Error> {
+    /// # let bitcoin_config = RpcConfig {
+    /// #     url: "http://localhost:18443".to_string(),
+    /// #     username: "foo".to_string(),
+    /// #     password: "rpcpassword".to_string(),
+    /// #     network: bitcoin::Network::Regtest,
+    /// #     wallet: "test_wallet".to_string(),
+    /// # };
+    /// # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
+    /// # let public_key = PublicKey::from_str("02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9")?;
     /// // Create wallet with change descriptor (recommended)
     /// // This allows using trusted unconfirmed UTXOs
     /// let wallet = Wallet::new(
@@ -518,6 +620,8 @@ impl Wallet {
     ///     "wpkh(L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o)", // receive descriptor
     ///     Some("wpkh(KxJk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8Jk8)"), // change descriptor - must be different from receive
     /// )?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn new(
         bitcoin_config: RpcConfig,
@@ -634,11 +738,26 @@ impl Wallet {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,no_run
+    /// # use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}};
+    /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+    /// # fn example() -> Result<(), anyhow::Error> {
+    /// # let bitcoin_config = RpcConfig {
+    /// #     url: "http://localhost:18443".to_string(),
+    /// #     username: "foo".to_string(),
+    /// #     password: "rpcpassword".to_string(),
+    /// #     network: bitcoin::Network::Regtest,
+    /// #     wallet: "test_wallet".to_string(),
+    /// # };
+    /// # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
+    /// # let mut wallet = Wallet::from_private_key(bitcoin_config, wallet_config, "L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o", None)?;
     /// let balance = wallet.balance();
-    /// println!("Confirmed: {} sats", balance.confirmed);
-    /// println!("Unconfirmed: {} sats", balance.unconfirmed);
-    /// println!("Immature: {} sats", balance.immature);
+    /// println!("Confirmed: {} sats", balance.confirmed.to_sat());
+    /// println!("Trusted pending: {} sats", balance.trusted_pending.to_sat());
+    /// println!("Untrusted pending: {} sats", balance.untrusted_pending.to_sat());
+    /// println!("Immature: {} sats", balance.immature.to_sat());
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn balance(&self) -> Balance {
         self.bdk_wallet.balance()
@@ -655,9 +774,23 @@ impl Wallet {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,no_run
+    /// # use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}};
+    /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+    /// # fn example() -> Result<(), anyhow::Error> {
+    /// # let bitcoin_config = RpcConfig {
+    /// #     url: "http://localhost:18443".to_string(),
+    /// #     username: "foo".to_string(),
+    /// #     password: "rpcpassword".to_string(),
+    /// #     network: bitcoin::Network::Regtest,
+    /// #     wallet: "test_wallet".to_string(),
+    /// # };
+    /// # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
+    /// # let mut wallet = Wallet::from_private_key(bitcoin_config, wallet_config, "L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o", None)?;
     /// let address = wallet.receive_address()?;
     /// println!("New receiving address: {}", address);
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn receive_address(&mut self) -> Result<Address, WalletError> {
         let address_info = self.bdk_wallet.reveal_next_address(KeychainKind::External);
@@ -683,13 +816,26 @@ impl Wallet {
     ///
     /// # Example
     ///
-    /// ```rust
-    /// let tx = wallet.send_to_address_tx(
-    ///     vec!["bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh"],
-    ///     vec![100000], // 0.001 BTC in satoshis
+    /// ```rust,no_run
+    /// # use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}};
+    /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+    /// # fn example() -> Result<(), anyhow::Error> {
+    /// # let bitcoin_config = RpcConfig {
+    /// #     url: "http://localhost:18443".to_string(),
+    /// #     username: "foo".to_string(),
+    /// #     password: "rpcpassword".to_string(),
+    /// #     network: bitcoin::Network::Regtest,
+    /// #     wallet: "test_wallet".to_string(),
+    /// # };
+    /// # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
+    /// # let mut wallet = Wallet::from_private_key(bitcoin_config, wallet_config, "L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o", None)?;
+    /// let tx = wallet.send_funds(
+    ///     bitvmx_wallet::Destination::Address("bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh".to_string(), 100000),
     ///     Some(5), // 5 sat/vB fee rate
     /// )?;
     /// println!("Transaction created: {}", tx.compute_txid());
+    /// # Ok(())
+    /// # }
     /// ```
     #[allow(deprecated)] // TODO: Remove this once the deprecated methods are removed from the BDK wallet
     fn send_to_address_tx(
@@ -798,20 +944,31 @@ impl Wallet {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use rust_bitvmx_wallet::{Wallet, Destination};
+    /// # use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}, Destination};
+    /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
     /// # use bitcoin::PublicKey;
-    /// # let mut wallet = Wallet::new(/* ... */).unwrap();
-    ///
+    /// # use std::str::FromStr;
+    /// # fn example() -> Result<(), anyhow::Error> {
+    /// # let bitcoin_config = RpcConfig {
+    /// #     url: "http://localhost:18443".to_string(),
+    /// #     username: "foo".to_string(),
+    /// #     password: "rpcpassword".to_string(),
+    /// #     network: bitcoin::Network::Regtest,
+    /// #     wallet: "test_wallet".to_string(),
+    /// # };
+    /// # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
+    /// # let public_key = PublicKey::from_str("02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9")?;
+    /// # let mut wallet = Wallet::new(bitcoin_config, wallet_config, &public_key, "wpkh(L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o)", None)?;
     /// // Send 50,000 sats to a raw address
     /// let destination = Destination::Address("bcrt1qxyz...".to_string(), 50_000);
-    /// let tx = wallet.create_tx(destination, Some(5)).unwrap();
-    /// println!("Created transaction: {}", tx.txid());
+    /// let tx = wallet.create_tx(destination, Some(5))?;
+    /// println!("Created transaction: {}", tx.compute_txid());
     ///
     /// // Send to a P2WPKH derived from a public key
-    /// # let pubkey = PublicKey::from_str("...").unwrap();
+    /// let pubkey = PublicKey::from_str("02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9")?;
     /// let destination = Destination::P2WPKH(pubkey, 75_000);
-    /// let tx = wallet.create_tx(destination, None).unwrap();
-    /// println!("Created P2WPKH transaction: {}", tx.txid());
+    /// let tx = wallet.create_tx(destination, None)?;
+    /// println!("Created P2WPKH transaction: {}", tx.compute_txid());
     ///
     /// // Send to multiple destinations in a batch
     /// let batch = vec![
@@ -819,8 +976,10 @@ impl Wallet {
     ///     Destination::P2WPKH(pubkey, 10_000),
     /// ];
     /// let destination = Destination::Batch(batch);
-    /// let tx = wallet.create_tx(destination, Some(3)).unwrap();
-    /// println!("Created batch transaction: {}", tx.txid());
+    /// let tx = wallet.create_tx(destination, Some(3))?;
+    /// println!("Created batch transaction: {}", tx.compute_txid());
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn create_tx(
         &mut self,
@@ -887,20 +1046,31 @@ impl Wallet {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use rust_bitvmx_wallet::{Wallet, Destination};
+    /// # use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}, Destination};
+    /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
     /// # use bitcoin::PublicKey;
-    /// # let mut wallet = Wallet::new(/* ... */).unwrap();
-    ///
+    /// # use std::str::FromStr;
+    /// # fn example() -> Result<(), anyhow::Error> {
+    /// # let bitcoin_config = RpcConfig {
+    /// #     url: "http://localhost:18443".to_string(),
+    /// #     username: "foo".to_string(),
+    /// #     password: "rpcpassword".to_string(),
+    /// #     network: bitcoin::Network::Regtest,
+    /// #     wallet: "test_wallet".to_string(),
+    /// # };
+    /// # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
+    /// # let public_key = PublicKey::from_str("02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9")?;
+    /// # let mut wallet = Wallet::new(bitcoin_config, wallet_config, &public_key, "wpkh(L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o)", None)?;
     /// // Send 50,000 sats to a raw address and broadcast it
     /// let destination = Destination::Address("bcrt1qxyz...".to_string(), 50_000);
-    /// let tx = wallet.send_funds(destination, Some(5)).unwrap();
-    /// println!("Broadcasted transaction: {}", tx.txid());
+    /// let tx = wallet.send_funds(destination, Some(5))?;
+    /// println!("Broadcasted transaction: {}", tx.compute_txid());
     ///
     /// // Send 75,000 sats to a P2WPKH derived from a public key
-    /// # let pubkey = PublicKey::from_str("...").unwrap();
+    /// let pubkey = PublicKey::from_str("02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9")?;
     /// let destination = Destination::P2WPKH(pubkey, 75_000);
-    /// let tx = wallet.send_funds(destination, None).unwrap();
-    /// println!("Broadcasted P2WPKH transaction: {}", tx.txid());
+    /// let tx = wallet.send_funds(destination, None)?;
+    /// println!("Broadcasted P2WPKH transaction: {}", tx.compute_txid());
     ///
     /// // Send to multiple destinations in a batch
     /// let batch = vec![
@@ -908,8 +1078,10 @@ impl Wallet {
     ///     Destination::P2WPKH(pubkey, 10_000),
     /// ];
     /// let destination = Destination::Batch(batch);
-    /// let tx = wallet.send_funds(destination, Some(3)).unwrap();
-    /// println!("Broadcasted batch transaction: {}", tx.txid());
+    /// let tx = wallet.send_funds(destination, Some(3))?;
+    /// println!("Broadcasted batch transaction: {}", tx.compute_txid());
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn send_funds(
         &mut self,

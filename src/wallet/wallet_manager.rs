@@ -13,20 +13,26 @@
 //!
 //! ## Examples
 //!
-//! ```rust
-//! use bitvmx_wallet::wallet_manager::WalletManager;
-//! use bitvmx_wallet::config::Config;
+//! ```rust,no_run
+//! use bitvmx_wallet::{WalletManager, wallet::{config::Config, errors::WalletError}};
+//! fn main() -> Result<(), WalletError> {  
+//!     // Load configuration from YAML file
+//!     let config = bitvmx_settings::settings::load_config_file::<Config>(Some(
+//!         "config/regtest.yaml".to_string()
+//!     ))?;
 //!
-//! // Create a wallet manager
-//! let wallet_manager = WalletManager::new(config)?;
+//!     // Create a wallet manager
+//!     let wallet_manager = WalletManager::new(config)?;
 //!
-//! // Create a new wallet
-//! let wallet = wallet_manager.create_new_wallet("my_wallet")?;
+//!     // Create a new wallet
+//!     let wallet = wallet_manager.create_new_wallet("my_wallet")?;
 //!
-//! // List all wallets
-//! let wallets = wallet_manager.list_wallets()?;
-//! for (name, pubkey) in wallets {
-//!     println!("Wallet: {} - {}", name, pubkey);
+//!     // List all wallets
+//!     let wallets = wallet_manager.list_wallets()?;
+//!     for (name, pubkey) in wallets {
+//!         println!("Wallet: {} - {}", name, pubkey);
+//!     }
+//!     Ok(())
 //! }
 //! ```
 
@@ -91,22 +97,31 @@ impl StoreKey {
 ///
 /// ## Examples
 ///
-/// ```rust
-/// use bitvmx_wallet::wallet_manager::WalletManager;
+/// ```rust,no_run
+/// use bitvmx_wallet::{WalletManager, wallet::config::Config};
 ///
-/// // Create a wallet manager
-/// let wallet_manager = WalletManager::new(config)?;
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///
-/// // Create a new wallet (single descriptor wallet)
-/// let wallet = wallet_manager.create_new_wallet("alice_wallet")?;
+///     // Load configuration from YAML file
+///     let config = bitvmx_settings::settings::load_config_file::<Config>(Some(
+///         "config/regtest.yaml".to_string()
+///     ))?;
 ///
-/// // Load an existing wallet
-/// let wallet = wallet_manager.load_wallet("alice_wallet")?;
+///     // Create a wallet manager
+///     let wallet_manager = WalletManager::new(config)?;
 ///
-/// // List all wallets
-/// let wallets = wallet_manager.list_wallets()?;
-/// for (name, pubkey) in wallets {
-///     println!("Wallet: {} - {}", name, pubkey);
+///     // Create a new wallet (single descriptor wallet)
+///     let wallet = wallet_manager.create_new_wallet("alice_wallet")?;
+///
+///     // Load an existing wallet
+///     let wallet = wallet_manager.load_wallet("alice_wallet")?;
+///
+///     // List all wallets
+///     let wallets = wallet_manager.list_wallets()?;
+///     for (name, pubkey) in wallets {
+///         println!("Wallet: {} - {}", name, pubkey);
+///     }
+///     Ok(())
 /// }
 /// ```
 pub struct WalletManager {
@@ -138,10 +153,18 @@ impl WalletManager {
     ///
     /// # Example
     ///
-    /// ```rust
-    /// use bitvmx_wallet::wallet_manager::WalletManager;
+    /// ```rust,no_run
+    /// use bitvmx_wallet::{WalletManager, wallet::{config::Config, errors::WalletError}};
+    /// fn main() -> Result<(), WalletError> {  
+    ///     // Load configuration from YAML file
+    ///     let config = bitvmx_settings::settings::load_config_file::<Config>(Some(
+    ///         "config/regtest.yaml".to_string()
+    ///     ))?;
     ///
-    /// let wallet_manager = WalletManager::new(config)?;
+    ///     // Create a wallet manager
+    ///     let wallet_manager = WalletManager::new(config)?;
+    ///     Ok(())
+    /// }
     /// ```
     pub fn new(config: Config) -> Result<WalletManager, WalletError> {
         let storage: Rc<Storage> = Rc::new(Storage::new(&config.storage)?);
@@ -169,11 +192,17 @@ impl WalletManager {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,no_run
+    /// # use bitvmx_wallet::WalletManager;
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let config = bitvmx_settings::settings::load_config_file::<bitvmx_wallet::wallet::config::Config>(Some("config/regtest.yaml".to_string()))?;
+    /// # let wallet_manager = WalletManager::new(config)?;
     /// let wallets = wallet_manager.list_wallets()?;
     /// for (identifier, pubkey) in wallets {
     ///     println!("Wallet: {} - {}", identifier, pubkey);
     /// }
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn list_wallets(&self) -> Result<Vec<(String, PublicKey)>, WalletError> {
         let key = StoreKey::Wallet(String::new()).get_key();
@@ -213,9 +242,15 @@ impl WalletManager {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,no_run
+    /// # use bitvmx_wallet::WalletManager;
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let config = bitvmx_settings::settings::load_config_file::<bitvmx_wallet::wallet::config::Config>(Some("config/regtest.yaml".to_string()))?;
+    /// # let wallet_manager = WalletManager::new(config)?;
     /// let wallet = wallet_manager.create_new_wallet("alice_wallet")?;
     /// println!("Created wallet with public key: {}", wallet.public_key);
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn create_new_wallet(&self, identifier: &str) -> Result<Wallet, WalletError> {
         let store_key = StoreKey::Wallet(identifier.to_string());
@@ -263,9 +298,15 @@ impl WalletManager {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,no_run
+    /// # use bitvmx_wallet::WalletManager;
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let config = bitvmx_settings::settings::load_config_file::<bitvmx_wallet::wallet::config::Config>(Some("config/regtest.yaml".to_string()))?;
+    /// # let wallet_manager = WalletManager::new(config)?;
     /// let wallet = wallet_manager.create_wallet_from_derive_keypair("bob_wallet", 42)?;
     /// println!("Created wallet with public key: {}", wallet.public_key);
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn create_wallet_from_derive_keypair(
         &self,
@@ -316,12 +357,18 @@ impl WalletManager {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,no_run
+    /// # use bitvmx_wallet::WalletManager;
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let config = bitvmx_settings::settings::load_config_file::<bitvmx_wallet::wallet::config::Config>(Some("config/regtest.yaml".to_string()))?;
+    /// # let wallet_manager = WalletManager::new(config)?;
     /// let wallet = wallet_manager.create_wallet_from_private_key(
     ///     "charlie_wallet",
     ///     "L4rK1yDtCWekvXuE6oXD9jCYgFNVs3VqHcVfJ9LRZdamizmv6Q6o"
     /// )?;
     /// println!("Created wallet with public key: {}", wallet.public_key);
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn create_wallet_from_private_key(
         &self,
@@ -372,7 +419,11 @@ impl WalletManager {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,no_run
+    /// # use bitvmx_wallet::WalletManager;
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let config = bitvmx_settings::settings::load_config_file::<bitvmx_wallet::wallet::config::Config>(Some("config/regtest.yaml".to_string()))?;
+    /// # let wallet_manager = WalletManager::new(config)?;
     /// let partial_keys = vec![
     ///     "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
     ///     "fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321".to_string(),
@@ -383,6 +434,8 @@ impl WalletManager {
     ///     partial_keys
     /// )?;
     /// println!("Created multisig wallet with public key: {}", wallet.public_key);
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn create_wallet_from_partial_keys(
         &self,
@@ -430,9 +483,15 @@ impl WalletManager {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,no_run
+    /// # use bitvmx_wallet::WalletManager;
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let config = bitvmx_settings::settings::load_config_file::<bitvmx_wallet::wallet::config::Config>(Some("config/regtest.yaml".to_string()))?;
+    /// # let wallet_manager = WalletManager::new(config)?;
     /// let wallet = wallet_manager.load_wallet("alice_wallet")?;
     /// println!("Loaded wallet: {}", wallet.name);
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn load_wallet(&self, identifier: &str) -> Result<Wallet, WalletError> {
         if identifier.trim().is_empty() {
@@ -472,9 +531,15 @@ impl WalletManager {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,no_run
+    /// # use bitvmx_wallet::WalletManager;
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let config = bitvmx_settings::settings::load_config_file::<bitvmx_wallet::wallet::config::Config>(Some("config/regtest.yaml".to_string()))?;
+    /// # let wallet_manager = WalletManager::new(config)?;
     /// wallet_manager.clear_wallet("test_wallet")?;
     /// println!("Cleared test wallet");
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn clear_wallet(&self, identifier: &str) -> Result<(), WalletError> {
         if identifier.trim().is_empty() {
@@ -509,9 +574,15 @@ impl WalletManager {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,no_run
+    /// # use bitvmx_wallet::WalletManager;
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let config = bitvmx_settings::settings::load_config_file::<bitvmx_wallet::wallet::config::Config>(Some("config/regtest.yaml".to_string()))?;
+    /// # let wallet_manager = WalletManager::new(config)?;
     /// wallet_manager.clear_all_wallets()?;
     /// println!("Cleared all wallets");
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn clear_all_wallets(&self) -> Result<(), WalletError> {
         let key = StoreKey::Wallet(String::new()).get_key();

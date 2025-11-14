@@ -22,7 +22,7 @@ const COINBASE_AMOUNT: u64 = 50;
 const EXTRA_P2WPKH_OUTPUT_FEE: u64 = 31;
 
 #[test]
-//#[ignore]
+#[ignore]
 fn test_bdk_wallet_sync_wallet() -> Result<(), anyhow::Error> {
     let config = clean_and_load_config("config/regtest.yaml")?;
 

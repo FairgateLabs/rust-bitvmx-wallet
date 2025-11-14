@@ -1,14 +1,13 @@
 name: Test CI
 
 on:
-    push:
-        branches:
-            - main
-            - dev
     pull_request:
         branches:
             - main
             - dev
+
+env:
+    CARGO_TERM_COLOR: always
 
 jobs:
     tests:
@@ -24,7 +23,7 @@ jobs:
                       ~/.cargo/registry
                       ~/.cargo/git
                       target
-                  key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+                  key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
                   restore-keys: |
                       ${{ runner.os }}-cargo-
 
@@ -35,8 +34,11 @@ jobs:
                   toolchain: stable
                   override: true
 
-            - name: Run tests
-              run: cargo test -- --test-threads=1
+            - name: Build
+              run: cargo build
 
             - name: Generate documentation
               run: cargo doc --no-deps
+
+            - name: Run tests
+              run: cargo test -- --test-threads=1

@@ -1,7 +1,7 @@
 use super::{config::ClassicWalletConfig, errors::ClassicWalletError};
 use bitcoin::{network, Address, Amount, OutPoint, PrivateKey, PublicKey, Transaction, Txid};
 use bitvmx_bitcoin_rpc::bitcoin_client::{BitcoinClient, BitcoinClientApi};
-use key_manager::{create_key_manager_from_config, key_manager::KeyManager, key_store::KeyStore};
+use key_manager::{create_key_manager_from_config, key_manager::KeyManager, key_type::BitcoinKeyType};
 use protocol_builder::{
     builder::Protocol,
     scripts::{self, ProtocolScript, SignMode},
@@ -53,11 +53,9 @@ impl ClassicWallet {
         with_client: bool,
     ) -> Result<ClassicWallet, ClassicWalletError> {
         let storage = Rc::new(Storage::new(&config.storage)?);
-        let key_store = KeyStore::new(storage.clone());
         let key_manager = Rc::new(create_key_manager_from_config(
             &config.key_manager,
-            key_store,
-            storage.clone(),
+            config.storage.clone(),
         )?);
 
         let bitcoin_client = if with_client {
@@ -85,7 +83,7 @@ impl ClassicWallet {
         })
     }
 
-    pub fn create_wallet(&self, identifier: &str) -> Result<PublicKey, ClassicWalletError> {
+    pub fn create_wallet(&self, identifier: &str, key_type: BitcoinKeyType) -> Result<PublicKey, ClassicWalletError> {
         if identifier.trim().is_empty() {
             return Err(ClassicWalletError::KeyNotFound(
                 "Invalid identifier".to_string(),
@@ -99,7 +97,7 @@ impl ClassicWallet {
         }
 
         let index = self.get_wallet_index()?;
-        let public = self.key_manager.derive_keypair(index)?;
+        let public = self.key_manager.derive_keypair(key_type, index)?;
 
         self.store.set(key, public.clone(), None)?;
 
@@ -652,8 +650,8 @@ mod tests {
         ClassicWallet::new(config, false).unwrap()
     }
 
-    fn create_test_wallet(wallet: &ClassicWallet, identifier: &str) {
-        wallet.create_wallet(identifier).unwrap();
+    fn create_test_wallet(wallet: &ClassicWallet, identifier: &str, key_type: BitcoinKeyType) {
+        wallet.create_wallet(identifier, key_type).unwrap();
     }
 
     #[test]
@@ -675,7 +673,7 @@ mod tests {
         let wallet_name = "wallet_1";
         let funding_id = "fund_1";
 
-        wallet.create_wallet(wallet_name)?;
+        wallet.create_wallet(wallet_name, BitcoinKeyType::P2tr)?;
         wallet.regtest_fund(wallet_name, funding_id, 100_000)?;
         let funds = wallet.list_funds(wallet_name)?;
         assert_eq!(funds.len(), 1);
@@ -725,7 +723,7 @@ mod tests {
         let wallet_name = "wallet_1";
         let funding_id = "fund_1";
 
-        wallet.create_wallet(wallet_name)?;
+        wallet.create_wallet(wallet_name, BitcoinKeyType::P2tr)?;
         wallet.add_funding(
             wallet_name,
             funding_id,
@@ -782,7 +780,7 @@ mod tests {
         let wallet_names = vec!["wallet1", "wallet2", "wallet3"];
 
         for name in wallet_names.iter() {
-            wallet.create_wallet(name)?;
+            wallet.create_wallet(name, BitcoinKeyType::P2tr)?;
         }
 
         let wallets = wallet.get_wallets()?;
@@ -914,7 +912,7 @@ mod tests {
         let wallet = ClassicWallet::new(config, false).unwrap();
 
         let identifier = "test_wallet";
-        let pubkey = wallet.create_wallet(identifier).unwrap();
+        let pubkey = wallet.create_wallet(identifier, BitcoinKeyType::P2tr).unwrap();
         let (exported_pub, _exported_priv) = wallet.export_wallet(identifier).unwrap();
 
         assert_eq!(pubkey, exported_pub);
@@ -924,7 +922,7 @@ mod tests {
     fn test_create_wallet_empty_identifier() {
         let wallet = setup_wallet();
         let identifier = "";
-        let result = wallet.create_wallet(identifier);
+        let result = wallet.create_wallet(identifier, BitcoinKeyType::P2tr);
         assert!(
             result.is_err(),
             "Should not allow wallet names with only whitespace"
@@ -935,7 +933,7 @@ mod tests {
     fn test_create_wallet_with_whitespace_name() {
         let wallet = setup_wallet();
         let identifier = "   ";
-        let result = wallet.create_wallet(identifier);
+        let result = wallet.create_wallet(identifier, BitcoinKeyType::P2tr);
         assert!(
             result.is_err(),
             "Should not allow wallet names with only whitespace"
@@ -946,8 +944,8 @@ mod tests {
     fn test_create_wallet_duplicate_identifier_should_fail() {
         let wallet = setup_wallet();
         let identifier = "dup_wallet";
-        create_test_wallet(&wallet, identifier);
-        let result = wallet.create_wallet(identifier);
+        create_test_wallet(&wallet, identifier, BitcoinKeyType::P2tr);
+        let result = wallet.create_wallet(identifier, BitcoinKeyType::P2tr);
         assert!(
             result.is_err(),
             "Should not allow duplicate wallet identifiers"
@@ -958,7 +956,7 @@ mod tests {
     fn test_add_funding_with_empty_id_should_fail() {
         let wallet = setup_wallet();
         let identifier = "wallet_empty_fundid";
-        create_test_wallet(&wallet, identifier);
+        create_test_wallet(&wallet, identifier, BitcoinKeyType::P2tr);
 
         let funding_id = "";
         let outpoint = OutPoint {
@@ -978,7 +976,7 @@ mod tests {
     fn test_add_funding_with_blank_id_should_fail() {
         let wallet = setup_wallet();
         let identifier = "wallet_blank_fundid";
-        create_test_wallet(&wallet, identifier);
+        create_test_wallet(&wallet, identifier, BitcoinKeyType::P2tr);
 
         let funding_id = " ";
         let outpoint = OutPoint {
@@ -998,7 +996,7 @@ mod tests {
     fn test_add_and_list_funding() {
         let wallet = setup_wallet();
         let identifier = "test_wallet";
-        create_test_wallet(&wallet, identifier);
+        create_test_wallet(&wallet, identifier, BitcoinKeyType::P2tr);
 
         let funding_id = "fund1";
         let outpoint = OutPoint {
@@ -1021,7 +1019,7 @@ mod tests {
     fn test_remove_funding() {
         let wallet = setup_wallet();
         let identifier = "test_wallet";
-        create_test_wallet(&wallet, identifier);
+        create_test_wallet(&wallet, identifier, BitcoinKeyType::P2tr);
 
         let funding_id = "fund1";
         let outpoint = OutPoint {
@@ -1061,7 +1059,7 @@ mod tests {
 
         {
             let wallet = ClassicWallet::new(config.clone(), false).unwrap();
-            create_test_wallet(&wallet, identifier);
+            create_test_wallet(&wallet, identifier, BitcoinKeyType::P2tr);
             wallet
                 .add_funding(identifier, funding_id, outpoint, amount)
                 .unwrap();
@@ -1084,7 +1082,7 @@ mod tests {
     fn test_add_duplicate_funding_should_fail() {
         let wallet = setup_wallet();
         let identifier = "wallet_fund";
-        create_test_wallet(&wallet, identifier);
+        create_test_wallet(&wallet, identifier, BitcoinKeyType::P2tr);
 
         let funding_id = "fund1";
         let outpoint = OutPoint {
@@ -1107,7 +1105,7 @@ mod tests {
     fn test_remove_nonexistent_funding_should_fail() {
         let wallet = setup_wallet();
         let identifier = "wallet_no_fund";
-        create_test_wallet(&wallet, identifier);
+        create_test_wallet(&wallet, identifier, BitcoinKeyType::P2tr);
 
         let result = wallet.remove_funding(identifier, "nonexistent_fund");
         assert!(
@@ -1130,7 +1128,7 @@ mod tests {
     fn test_fund_address_with_nonexistent_funding_should_fail() {
         let wallet = setup_wallet();
         let identifier = "wallet_no_fund";
-        create_test_wallet(&wallet, identifier);
+        create_test_wallet(&wallet, identifier, BitcoinKeyType::P2tr);
 
         let pk = PublicKey::from_str(
             "038f47dcd43ba6d97fc9ed2e3bba09b175a45fac55f0683e8cf771e8ced4572354",
@@ -1159,7 +1157,7 @@ mod tests {
 
         let names = vec!["alice", "bob", "carol"];
         for name in &names {
-            create_test_wallet(&wallet, name);
+            create_test_wallet(&wallet, name, BitcoinKeyType::P2tr);
         }
 
         let wallets = wallet.get_wallets().unwrap();
@@ -1178,7 +1176,7 @@ mod tests {
     fn test_list_funds_returns_correct_funds() {
         let wallet = setup_wallet();
         let identifier = "alice";
-        create_test_wallet(&wallet, identifier);
+        create_test_wallet(&wallet, identifier, BitcoinKeyType::P2tr);
 
         let funding_id1 = "fund1";
         let outpoint1 = OutPoint {
@@ -1240,8 +1238,8 @@ mod tests {
         let funding_id3 = "fund_3";
         funding_access_data.insert(wallet_name2.to_string(), vec![funding_id3.to_string()]);
 
-        wallet.create_wallet(wallet_name1).unwrap();
-        wallet.create_wallet(wallet_name2).unwrap();
+        wallet.create_wallet(wallet_name1, BitcoinKeyType::P2tr).unwrap();
+        wallet.create_wallet(wallet_name2, BitcoinKeyType::P2tr).unwrap();
         wallet
             .regtest_fund(wallet_name1, funding_id1, 100_000)
             .unwrap();

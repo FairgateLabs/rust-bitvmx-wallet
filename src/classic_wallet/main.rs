@@ -7,6 +7,7 @@ use clap::Parser;
 use classic_wallet::ClassicWallet;
 use cli::{Cli, Commands};
 use config::ClassicWalletConfig;
+use key_manager::key_type::BitcoinKeyType;
 use std::process;
 use tracing_subscriber::EnvFilter;
 
@@ -24,6 +25,8 @@ fn config_trace_aux() {
 }
 
 fn main() {
+    // TODO select key type: up to now fixed to P2tr
+
     let cli = Cli::parse();
 
     // Use the config file specified by the user
@@ -52,7 +55,7 @@ fn main() {
     };
 
     match &cli.command {
-        Commands::CreateWallet { identifier } => match wallet.create_wallet(identifier) {
+        Commands::CreateWallet { identifier } => match wallet.create_wallet(identifier, BitcoinKeyType::P2tr) {
             Ok(pk) => println!("Created key: {pk}"),
             Err(e) => eprintln!("Error: {e}"),
         },

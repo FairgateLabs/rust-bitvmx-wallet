@@ -37,7 +37,7 @@ It is not production-ready, has not been audited, and future updates may introdu
 To run test use:
 
 ```sh
-cargo test -- --ignored --test-threads=1  
+cargo test -- --ignored --test-threads=1
 ```
 
 ## Quick Start
@@ -49,8 +49,8 @@ The `send_funds` method creates, signs, and broadcasts the transaction to the Bi
 
 ```rust
 use bitvmx_wallet::{
-    config::Config, 
-    wallet::Wallet, 
+    config::Config,
+    wallet::Wallet,
     wallet_manager::WalletManager
 };
 use bitvmx_wallet::wallet::types::Destination;
@@ -215,12 +215,14 @@ let mut wallet = Wallet::from_private_key(
 ```rust
 use bitvmx_wallet::wallet::Wallet;
 use key_manager::key_manager::KeyManager;
+use key_manager::key_type::BitcoinKeyType;
 
 // Assuming you have a key_manager instance
 let wallet = Wallet::from_derive_keypair(
     bitcoin_config,
     wallet_config,
     key_manager,
+    BitcoinKeyType::P2tr, // Key type (P2tr, P2wpkh, etc.)
     0, // Use index 0 for the main key
     Some(1), // Use index 1 for change addresses (must be different from main key)
 )?;
@@ -353,7 +355,7 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) file for
 
 ## Part of the BitVMX Ecosystem
 
-This repository is a component of the **BitVMX Ecosystem**, an open platform for disputable computation secured by Bitcoin.  
+This repository is a component of the **BitVMX Ecosystem**, an open platform for disputable computation secured by Bitcoin.
 You can find the index of all BitVMX open-source components at [**FairgateLabs/BitVMX**](https://github.com/FairgateLabs/BitVMX).
 
 ---

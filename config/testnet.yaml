@@ -7,12 +7,11 @@ bitcoin:
 
 key_manager:
   network: testnet
-
-key_storage:
-  password: secret_password_1
-  path: /tmp/testnet/wallet/keys.db
+  mnemonic_sentence: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+  mnemonic_passphrase: ""
 
 storage:
+  password: "secret_password"
   path: /tmp/testnet/wallet/storage.db
 
 wallet:

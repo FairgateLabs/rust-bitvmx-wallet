@@ -42,7 +42,6 @@ pub fn clean_and_load_config(config_path: &str) -> Result<Config, anyhow::Error>
 
     Wallet::clear_db(&config.wallet)?;
     clear_db(&config.storage.path)?;
-    clear_db(&config.key_storage.path)?;
 
     Ok(config)
 }

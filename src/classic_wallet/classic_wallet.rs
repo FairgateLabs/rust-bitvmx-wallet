@@ -56,12 +56,14 @@ impl ClassicWallet {
         config: ClassicWalletConfig,
         with_client: bool,
     ) -> Result<ClassicWallet, ClassicWalletError> {
+        println!("config storage: {:?}", config.storage.clone());
         let storage = Rc::new(Storage::new(&config.storage)?);
+        println!("config key_manager: {:?}", config.key_manager.clone());
         let key_manager = Rc::new(create_key_manager_from_config(
             &config.key_manager,
             config.storage.clone(),
         )?);
-
+        println!("key_manager created");
         let bitcoin_client = if with_client {
             Some(BitcoinClient::new_from_config(&config.bitcoin)?)
         } else {
@@ -628,10 +630,8 @@ mod tests {
         >(Some(config_path.to_string()))?;
 
         let storage_path = format!("{base_path}/{}/storage.db", generate_random_string());
-        let key_storage_path = format!("{base_path}/{}/keys.db", generate_random_string());
 
         config.storage.path = storage_path;
-        config.key_storage.path = key_storage_path;
 
         Ok(config)
     }
@@ -1051,13 +1051,11 @@ mod tests {
     fn test_persistence_of_wallet_and_funds() {
         let base_path = "/tmp/test_wallet_persistence";
         let storage_path = format!("{}/storage.db", base_path);
-        let key_storage_path = format!("{}/keys.db", base_path);
 
         let _ = std::fs::remove_dir_all(base_path);
 
         let mut config = clean_and_load_config("config/regtest.yaml").unwrap();
         config.storage.path = storage_path.clone();
-        config.key_storage.path = key_storage_path.clone();
 
         let identifier = "persist_wallet";
         let funding_id = "persist_fund";

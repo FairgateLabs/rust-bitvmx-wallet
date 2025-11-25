@@ -100,11 +100,6 @@ pub struct Config {
     /// Defines how cryptographic keys are stored, encrypted, and managed.
     pub key_manager: KeyManagerConfig,
 
-    /// Configuration for key storage backend.
-    ///
-    /// Specifies the storage mechanism for cryptographic keys (file system, database, etc.).
-    pub key_storage: StorageConfig,
-
     /// Configuration for general storage backend.
     ///
     /// Specifies the storage mechanism for wallet data and metadata.
@@ -123,7 +118,6 @@ impl Config {
     ///
     /// * `bitcoin` - Bitcoin network and RPC configuration
     /// * `key_manager` - Key management configuration
-    /// * `key_storage` - Key storage backend configuration
     /// * `storage` - General storage backend configuration
     /// * `wallet` - Wallet-specific configuration
     ///
@@ -149,12 +143,10 @@ impl Config {
     /// # };
     /// # // Note: These configs must be provided - typically loaded from YAML file
     /// # let key_manager_config: KeyManagerConfig = todo!();
-    /// # let key_storage: StorageConfig = todo!();
     /// # let storage: StorageConfig = todo!();
     /// let config = Config::new(
     ///     bitcoin_config,
     ///     key_manager_config,
-    ///     key_storage,
     ///     storage,
     ///     WalletConfig::new("/path/to/wallet.db".to_string(), None, None, None)?,
     /// )?;
@@ -164,14 +156,12 @@ impl Config {
     pub fn new(
         bitcoin: RpcConfig,
         key_manager: KeyManagerConfig,
-        key_storage: StorageConfig,
         storage: StorageConfig,
         wallet: WalletConfig,
     ) -> Result<Config, anyhow::Error> {
         Ok(Config {
             bitcoin,
             key_manager,
-            key_storage,
             storage,
             wallet,
         })

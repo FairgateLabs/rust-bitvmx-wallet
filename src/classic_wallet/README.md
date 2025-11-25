@@ -113,14 +113,14 @@ bitcoin:
   wallet: test_wallet
 
 key_manager:
-  network: regtest
-
-key_storage:
-  password: secret_password_1
-  path: /tmp/regtest/wallet/keys.db
+  network: "regtest"
+  mnemonic_sentence: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+  mnemonic_passphrase: ""
 
 storage:
+  password: "secret_password"
   path: /tmp/regtest/wallet/storage.db
+
 ```
 
 ## Key Management Notes

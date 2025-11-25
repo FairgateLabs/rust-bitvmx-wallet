@@ -55,10 +55,12 @@ fn main() {
     };
 
     match &cli.command {
-        Commands::CreateWallet { identifier } => match wallet.create_wallet(identifier, BitcoinKeyType::P2tr) {
-            Ok(pk) => println!("Created key: {pk}"),
-            Err(e) => eprintln!("Error: {e}"),
-        },
+        Commands::CreateWallet { identifier } => {
+            match wallet.create_wallet(identifier, BitcoinKeyType::P2tr) {
+                Ok(pk) => println!("Created key: {pk}"),
+                Err(e) => eprintln!("Error: {e}"),
+            }
+        }
         Commands::ImportKey {
             identifier,
             secret_key,

@@ -7,7 +7,8 @@ use clap::Parser;
 use classic_wallet::ClassicWallet;
 use cli::{Cli, Commands};
 use config::ClassicWalletConfig;
-use key_manager::key_type::BitcoinKeyType;
+use protocol_builder::bitcoin;
+use protocol_builder::key_manager::key_type::BitcoinKeyType;
 use std::process;
 use tracing_subscriber::EnvFilter;
 
@@ -30,9 +31,10 @@ fn main() {
     let cli = Cli::parse();
 
     // Use the config file specified by the user
-    let config = match bitvmx_settings::settings::load_config_file::<ClassicWalletConfig>(Some(
-        cli.config.clone(),
-    )) {
+    let config = match protocol_builder::bitvmx_settings::settings::load_config_file::<
+        ClassicWalletConfig,
+    >(Some(cli.config.clone()))
+    {
         Ok(cfg) => cfg,
         Err(e) => {
             eprintln!("Failed to load config: {e}");

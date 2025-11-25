@@ -3,10 +3,10 @@
 //! This module provides configuration structures for wallet settings, network connections,
 //! and key management. It handles loading and validation of configuration from various sources.
 
-use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
-use key_manager::config::KeyManagerConfig;
+use protocol_builder::bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+use protocol_builder::key_manager::config::KeyManagerConfig;
+use protocol_builder::storage_backend::storage_config::StorageConfig;
 use serde::{self, Deserialize};
-use storage_backend::storage_config::StorageConfig;
 
 /// Configuration for wallet-specific settings.
 ///
@@ -135,10 +135,10 @@ impl Config {
     ///
     /// ```rust,no_run
     /// # use bitvmx_wallet::wallet::config::{Config, WalletConfig};
-    /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
-    /// # use key_manager::config::KeyManagerConfig;
-    /// # use storage_backend::storage_config::StorageConfig;
-    /// # use bitcoin::Network;
+    /// # use protocol_builder::bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+    /// # use protocol_builder::key_manager::config::KeyManagerConfig;
+    /// # use protocol_builder::storage_backend::storage_config::StorageConfig;
+    /// # use protocol_builder::bitcoin::Network;
     /// # fn example() -> Result<(), anyhow::Error> {
     /// # let bitcoin_config = RpcConfig {
     /// #     url: "http://localhost:18443".to_string(),

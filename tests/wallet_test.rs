@@ -1,18 +1,18 @@
 #![cfg(test)]
 mod helper;
-use bitcoin::{Address, Amount, Network, PublicKey, ScriptBuf};
 use bitvmx_wallet::wallet::{Destination, RegtestWallet, Wallet};
+use protocol_builder::bitcoin::{Address, Amount, Network, PublicKey, ScriptBuf};
 
 #[allow(deprecated)]
 // TODO: Remove this once the deprecated methods are removed from the BDK wallet
 use bdk_wallet::SignOptions;
 use bdk_wallet::TxOrdering;
-use key_manager::key_type::BitcoinKeyType;
+use protocol_builder::key_manager::key_type::BitcoinKeyType;
 
 use crate::helper::clean_and_load_config;
 use anyhow::Result;
 use bitcoind::bitcoind::Bitcoind;
-use key_manager::create_key_manager_from_config;
+use protocol_builder::key_manager::create_key_manager_from_config;
 use std::rc::Rc;
 use std::str::FromStr;
 

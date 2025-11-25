@@ -33,7 +33,7 @@
 //!
 //! # fn main() -> Result<(), WalletError> {
 //! // Load configuration from YAML file
-//! let config = bitvmx_settings::settings::load_config_file::<Config>(Some(
+//! let config = protocol_builder::bitvmx_settings::settings::load_config_file::<Config>(Some(
 //!     "config/regtest.yaml".to_string()
 //! ))?;
 //!
@@ -64,6 +64,12 @@ pub use classic_wallet::classic_wallet::*;
 
 // re-export bdk_bitcoind_rpc
 pub use bdk_bitcoind_rpc;
-
 // re-export bdk_wallet
 pub use bdk_wallet;
+// re-export protocol_builder and its dependencies
+pub use protocol_builder;
+pub use protocol_builder::bitcoin;
+pub use protocol_builder::bitvmx_bitcoin_rpc;
+pub use protocol_builder::bitvmx_settings;
+pub use protocol_builder::key_manager;
+pub use protocol_builder::storage_backend;

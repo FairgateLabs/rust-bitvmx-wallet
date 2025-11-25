@@ -25,14 +25,13 @@
 //! bitvmx-wallet send-to-address my_wallet <address> <amount>
 //! bitvmx-wallet sync-wallet my_wallet
 //! ```
-
-use bitcoin::Txid;
 use bitvmx_wallet::wallet::cli::{Cli, Commands};
 use bitvmx_wallet::wallet::config::Config;
 use bitvmx_wallet::wallet::wallet_manager::WalletManager;
 use bitvmx_wallet::{Destination, RegtestWallet, Wallet};
 use clap::Parser;
-use key_manager::key_type::BitcoinKeyType;
+use protocol_builder::bitcoin::{self, Txid};
+use protocol_builder::key_manager::key_type::BitcoinKeyType;
 use std::process;
 use tracing_subscriber::EnvFilter;
 
@@ -107,14 +106,15 @@ fn main() {
     let cli = Cli::parse();
 
     // Use the config file specified by the user
-    let config =
-        match bitvmx_settings::settings::load_config_file::<Config>(Some(cli.config.clone())) {
-            Ok(cfg) => cfg,
-            Err(e) => {
-                eprintln!("Failed to load config: {e}");
-                process::exit(1);
-            }
-        };
+    let config = match protocol_builder::bitvmx_settings::settings::load_config_file::<Config>(
+        Some(cli.config.clone()),
+    ) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            eprintln!("Failed to load config: {e}");
+            process::exit(1);
+        }
+    };
     config_trace_aux();
     let wallet_manager = match WalletManager::new(config.clone()) {
         Ok(wm) => wm,

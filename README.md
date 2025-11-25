@@ -56,7 +56,7 @@ use bitvmx_wallet::{
 use bitvmx_wallet::wallet::types::Destination;
 
 // Load configuration from YAML file
-let config = bitvmx_settings::settings::load_config_file::<Config>(Some(
+let config = protocol_builder::bitvmx_settings::settings::load_config_file::<Config>(Some(
     "config/regtest.yaml".to_string()
 ))?;
 
@@ -110,7 +110,7 @@ for (i, output) in unspent_outputs.iter().enumerate() {
 ### Advanced Transaction Destinations
 
 ```rust
-use bitcoin::{PublicKey, XOnlyPublicKey};
+use protocol_builder::bitcoin::{PublicKey, XOnlyPublicKey};
 use bitvmx_wallet::wallet::types::Destination;
 use protocol_builder::scripts::ProtocolScript;
 
@@ -185,13 +185,13 @@ println!("Transaction outputs: {}", tx.output.len());
 
 ```rust
 use bitvmx_wallet::wallet::Wallet;
-use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+use protocol_builder::bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
 
 let bitcoin_config = RpcConfig {
     url: "http://localhost:18443".to_string(),
     username: "foo".to_string(),
     password: "rpcpassword".to_string(),
-    network: bitcoin::Network::Regtest,
+    network: protocol_builder::bitcoin::Network::Regtest,
 };
 
 let wallet_config = WalletConfig::new(
@@ -232,8 +232,8 @@ let wallet = Wallet::from_derive_keypair(
 
 ```rust
 use bitvmx_wallet::wallet::Wallet;
-use key_manager::key_manager::KeyManager;
-use bitcoin::PublicKey;
+use protocol_builder::key_manager::key_manager::KeyManager;
+use protocol_builder::bitcoin::PublicKey;
 
 // Assuming you have a key_manager instance and public keys
 let receive_pubkey = PublicKey::from_str("02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9")?;

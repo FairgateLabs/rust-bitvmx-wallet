@@ -1,4 +1,4 @@
-use bitcoin::{Block, PublicKey, XOnlyPublicKey};
+use protocol_builder::bitcoin::{Block, PublicKey, XOnlyPublicKey};
 use protocol_builder::scripts::ProtocolScript;
 use serde::{Deserialize, Serialize};
 

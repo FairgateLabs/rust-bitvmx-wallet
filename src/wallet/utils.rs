@@ -1,9 +1,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::wallet::errors::WalletError;
-use bitcoin::key::Secp256k1;
-use bitcoin::XOnlyPublicKey;
-use bitcoin::{Address, Network, PublicKey, ScriptBuf};
+use protocol_builder::bitcoin::key::Secp256k1;
+use protocol_builder::bitcoin::{Address, Network, PublicKey, ScriptBuf, XOnlyPublicKey};
 use protocol_builder::scripts::{self, ProtocolScript};
 
 /// Converts a public key to a Pay-to-Witness-Public-Key-Hash (P2WPKH) Bitcoin address.

@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use protocol_builder::bitcoin::network;
 
 #[derive(Parser)]
 #[command(name = "bitvmx-wallet")]
@@ -77,6 +78,6 @@ pub enum Commands {
         identifier: String,
         #[arg(value_delimiter = ',')]
         private_keys: Vec<String>,
-        network: bitcoin::Network,
+        network: network::Network,
     },
 }

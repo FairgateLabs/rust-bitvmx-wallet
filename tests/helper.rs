@@ -36,8 +36,9 @@ pub fn clear_db(path: &str) -> Result<(), anyhow::Error> {
 pub fn clean_and_load_config(config_path: &str) -> Result<Config, anyhow::Error> {
     config_trace();
 
-    let config =
-        bitvmx_settings::settings::load_config_file::<Config>(Some(config_path.to_string()))?;
+    let config = protocol_builder::bitvmx_settings::settings::load_config_file::<Config>(Some(
+        config_path.to_string(),
+    ))?;
 
     Wallet::clear_db(&config.wallet)?;
     clear_db(&config.storage.path)?;

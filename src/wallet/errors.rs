@@ -3,6 +3,9 @@
 //! This module defines all error types used throughout the wallet system,
 //! providing comprehensive error handling and meaningful error messages.
 
+use protocol_builder::bitcoin;
+use protocol_builder::bitvmx_settings;
+use protocol_builder::key_manager;
 use thiserror::Error;
 
 /// Error types that can occur during wallet operations.
@@ -46,7 +49,7 @@ pub enum WalletError {
     ///
     /// Occurs during storage operations for keys, wallet data, or metadata.
     #[error("Error with the storage backend: {0}")]
-    StoreError(#[from] storage_backend::error::StorageError),
+    StoreError(#[from] protocol_builder::storage_backend::error::StorageError),
 
     /// Key identifier already exists error.
     ///

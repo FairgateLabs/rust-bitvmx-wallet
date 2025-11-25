@@ -1,7 +1,7 @@
-use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
-use key_manager::config::KeyManagerConfig;
+use protocol_builder::bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+use protocol_builder::key_manager::config::KeyManagerConfig;
+use protocol_builder::storage_backend::storage_config::StorageConfig;
 use serde::{self, Deserialize};
-use storage_backend::storage_config::StorageConfig;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct ClassicWalletConfig {

@@ -1,4 +1,6 @@
-use bitvmx_bitcoin_rpc::errors::BitcoinClientError;
+use protocol_builder::bitvmx_bitcoin_rpc::errors::BitcoinClientError;
+use protocol_builder::bitvmx_settings;
+use protocol_builder::key_manager;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -16,7 +18,7 @@ pub enum ClassicWalletError {
     KeyManagerError(#[from] key_manager::errors::KeyManagerError),
 
     #[error("Error with the storage backend")]
-    StoreError(#[from] storage_backend::error::StorageError),
+    StoreError(#[from] protocol_builder::storage_backend::error::StorageError),
 
     #[error("Funding not found {0} {1}")]
     FundingNotFound(String, String),

@@ -1,7 +1,9 @@
 use super::{config::ClassicWalletConfig, errors::ClassicWalletError};
-use bitcoin::{network, Address, Amount, OutPoint, PrivateKey, PublicKey, Transaction, Txid};
-use bitvmx_bitcoin_rpc::bitcoin_client::{BitcoinClient, BitcoinClientApi};
-use key_manager::{
+use protocol_builder::bitcoin::{
+    network, Address, Amount, OutPoint, PrivateKey, PublicKey, Transaction, Txid,
+};
+use protocol_builder::bitvmx_bitcoin_rpc::bitcoin_client::{BitcoinClient, BitcoinClientApi};
+use protocol_builder::key_manager::{
     create_key_manager_from_config, key_manager::KeyManager, key_type::BitcoinKeyType,
 };
 use protocol_builder::{
@@ -14,14 +16,14 @@ use protocol_builder::{
     },
 };
 
+use protocol_builder::storage_backend::storage::{KeyValueStore, Storage};
 use std::{collections::HashMap, rc::Rc};
-use storage_backend::storage::{KeyValueStore, Storage};
 use tracing::{error, info};
 
 pub struct ClassicWallet {
     store: Rc<Storage>,
     key_manager: Rc<KeyManager>,
-    network: bitcoin::Network,
+    network: network::Network,
     bitcoin_client: Option<BitcoinClient>,
     regtest_address: Option<Address>,
 }
@@ -181,7 +183,7 @@ impl ClassicWallet {
         &self,
         identifier: &str,
         partial_keys: Vec<String>,
-        network: bitcoin::Network,
+        network: network::Network,
     ) -> Result<PublicKey, ClassicWalletError> {
         if partial_keys.is_empty() {
             error!("No partial private keys provided");
@@ -589,13 +591,13 @@ impl ClassicWallet {
 mod tests {
     use super::*;
     use anyhow::{Ok, Result};
-    use bitcoin::{
+    use bitcoind::bitcoind::Bitcoind;
+    use protocol_builder::bitcoin::{
         hashes::Hash,
         key::rand,
         secp256k1::{self, SecretKey},
         Network,
     };
-    use bitcoind::bitcoind::Bitcoind;
     use std::{str::FromStr, sync::Once};
     use tracing::info;
     use tracing_subscriber::EnvFilter;
@@ -621,9 +623,9 @@ mod tests {
 
         config_trace();
 
-        let mut config = bitvmx_settings::settings::load_config_file::<ClassicWalletConfig>(Some(
-            config_path.to_string(),
-        ))?;
+        let mut config = protocol_builder::bitvmx_settings::settings::load_config_file::<
+            ClassicWalletConfig,
+        >(Some(config_path.to_string()))?;
 
         let storage_path = format!("{base_path}/{}/storage.db", generate_random_string());
         let key_storage_path = format!("{base_path}/{}/keys.db", generate_random_string());

@@ -42,7 +42,9 @@ use crate::{
     RegtestWallet, Wallet,
 };
 use bitcoin::PublicKey;
-use key_manager::{create_key_manager_from_config, key_manager::KeyManager, key_type::BitcoinKeyType};
+use key_manager::{
+    create_key_manager_from_config, key_manager::KeyManager, key_type::BitcoinKeyType,
+};
 use std::rc::Rc;
 use storage_backend::storage::{KeyValueStore, Storage};
 use tracing::{error, info};
@@ -254,7 +256,11 @@ impl WalletManager {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn create_new_wallet(&self, identifier: &str, key_type: BitcoinKeyType) -> Result<Wallet, WalletError> {
+    pub fn create_new_wallet(
+        &self,
+        identifier: &str,
+        key_type: BitcoinKeyType,
+    ) -> Result<Wallet, WalletError> {
         let store_key = StoreKey::Wallet(identifier.to_string());
         let key = store_key.get_key();
         if self.store.has_key(&key)? {

@@ -1,7 +1,9 @@
 use super::{config::ClassicWalletConfig, errors::ClassicWalletError};
 use bitcoin::{network, Address, Amount, OutPoint, PrivateKey, PublicKey, Transaction, Txid};
 use bitvmx_bitcoin_rpc::bitcoin_client::{BitcoinClient, BitcoinClientApi};
-use key_manager::{create_key_manager_from_config, key_manager::KeyManager, key_type::BitcoinKeyType};
+use key_manager::{
+    create_key_manager_from_config, key_manager::KeyManager, key_type::BitcoinKeyType,
+};
 use protocol_builder::{
     builder::Protocol,
     scripts::{self, ProtocolScript, SignMode},
@@ -83,7 +85,11 @@ impl ClassicWallet {
         })
     }
 
-    pub fn create_wallet(&self, identifier: &str, key_type: BitcoinKeyType) -> Result<PublicKey, ClassicWalletError> {
+    pub fn create_wallet(
+        &self,
+        identifier: &str,
+        key_type: BitcoinKeyType,
+    ) -> Result<PublicKey, ClassicWalletError> {
         if identifier.trim().is_empty() {
             return Err(ClassicWalletError::KeyNotFound(
                 "Invalid identifier".to_string(),
@@ -912,7 +918,9 @@ mod tests {
         let wallet = ClassicWallet::new(config, false).unwrap();
 
         let identifier = "test_wallet";
-        let pubkey = wallet.create_wallet(identifier, BitcoinKeyType::P2tr).unwrap();
+        let pubkey = wallet
+            .create_wallet(identifier, BitcoinKeyType::P2tr)
+            .unwrap();
         let (exported_pub, _exported_priv) = wallet.export_wallet(identifier).unwrap();
 
         assert_eq!(pubkey, exported_pub);
@@ -1238,8 +1246,12 @@ mod tests {
         let funding_id3 = "fund_3";
         funding_access_data.insert(wallet_name2.to_string(), vec![funding_id3.to_string()]);
 
-        wallet.create_wallet(wallet_name1, BitcoinKeyType::P2tr).unwrap();
-        wallet.create_wallet(wallet_name2, BitcoinKeyType::P2tr).unwrap();
+        wallet
+            .create_wallet(wallet_name1, BitcoinKeyType::P2tr)
+            .unwrap();
+        wallet
+            .create_wallet(wallet_name2, BitcoinKeyType::P2tr)
+            .unwrap();
         wallet
             .regtest_fund(wallet_name1, funding_id1, 100_000)
             .unwrap();

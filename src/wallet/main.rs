@@ -309,7 +309,11 @@ fn main() {
             }
         }
         Commands::ImportDeriveKeypair { identifier, index } => {
-            match wallet_manager.create_wallet_from_derive_keypair(identifier, BitcoinKeyType::P2tr, *index) {
+            match wallet_manager.create_wallet_from_derive_keypair(
+                identifier,
+                BitcoinKeyType::P2tr,
+                *index,
+            ) {
                 Ok(mut new_wallet) => {
                     println!("Imported derived keypair from index {index}, starting sync");
                     match new_wallet.sync_wallet() {

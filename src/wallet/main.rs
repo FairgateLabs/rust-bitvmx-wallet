@@ -32,6 +32,7 @@ use bitvmx_wallet::wallet::config::Config;
 use bitvmx_wallet::wallet::wallet_manager::WalletManager;
 use bitvmx_wallet::{Destination, RegtestWallet, Wallet};
 use clap::Parser;
+use key_manager::key_type::BitcoinKeyType;
 use std::process;
 use tracing_subscriber::EnvFilter;
 
@@ -101,6 +102,8 @@ fn config_trace_aux() {
 /// bitvmx-wallet sync-wallet my_wallet
 /// ```
 fn main() {
+    // TODO select key type: up to now fixed to P2tr
+
     let cli = Cli::parse();
 
     // Use the config file specified by the user
@@ -212,6 +215,7 @@ fn main() {
                 config.bitcoin.clone(),
                 config.wallet.clone(),
                 wallet_manager.key_manager.clone(),
+                BitcoinKeyType::P2tr,
                 0,
                 None,
             ) {
@@ -287,7 +291,7 @@ fn main() {
             println!("- Pubkey: {pubkey}");
         }
         Commands::CreateWallet { identifier } => {
-            match wallet_manager.create_new_wallet(identifier) {
+            match wallet_manager.create_new_wallet(identifier, BitcoinKeyType::P2tr) {
                 Ok(mut new_wallet) => {
                     println!(
                         "Created new wallet with public_key: {}, start syncing",
@@ -305,7 +309,7 @@ fn main() {
             }
         }
         Commands::ImportDeriveKeypair { identifier, index } => {
-            match wallet_manager.create_wallet_from_derive_keypair(identifier, *index) {
+            match wallet_manager.create_wallet_from_derive_keypair(identifier, BitcoinKeyType::P2tr, *index) {
                 Ok(mut new_wallet) => {
                     println!("Imported derived keypair from index {index}, starting sync");
                     match new_wallet.sync_wallet() {

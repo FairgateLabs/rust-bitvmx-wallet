@@ -733,7 +733,7 @@ mod tests {
         let wallet_name = "wallet_1";
         let funding_id = "fund_1";
 
-        wallet.create_wallet(wallet_name, BitcoinKeyType::P2tr)?;
+        wallet.create_wallet(wallet_name, BitcoinKeyType::P2wpkh)?;
         wallet.add_funding(
             wallet_name,
             funding_id,

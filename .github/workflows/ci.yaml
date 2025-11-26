@@ -41,4 +41,4 @@ jobs:
         run: cargo doc --no-deps
 
       - name: Run tests
-        run: bash test.sh
+        run: cargo test -- --test-threads=1

@@ -1,11 +1,14 @@
 #![cfg(test)]
 mod helper;
 use crate::helper::{clean_and_load_config, clear_db};
+use assert_cmd::cargo::cargo_bin_cmd;
 use assert_cmd::Command;
 use bitcoind::bitcoind::Bitcoind;
 use predicates::prelude::*;
 
-const PROJECT_NAME: &str = "wallet";
+fn get_cmd() -> Command {
+    cargo_bin_cmd!("wallet")
+}
 
 #[test]
 #[ignore]
@@ -14,7 +17,7 @@ fn test_btc_to_sat() -> Result<(), anyhow::Error> {
     clear_db("/tmp/wallet_manager".as_ref())?;
     clean_and_load_config("config/regtest.yaml")?;
 
-    let mut cmd = Command::cargo_bin(PROJECT_NAME)?;
+    let mut cmd = get_cmd();
     cmd.arg("btc-to-sat");
     cmd.arg("1");
     cmd.assert().success().stdout(predicate::str::starts_with(
@@ -30,7 +33,7 @@ fn test_unrecognized_subcommand() -> Result<(), anyhow::Error> {
     clear_db("/tmp/wallet_manager".as_ref())?;
     clean_and_load_config("config/regtest.yaml")?;
 
-    let mut cmd = Command::cargo_bin(PROJECT_NAME)?;
+    let mut cmd = get_cmd();
     cmd.arg("invalid_argument");
     cmd.assert()
         .failure()
@@ -52,7 +55,7 @@ fn test_create_wallet() -> Result<(), anyhow::Error> {
     );
     bitcoind.start()?;
 
-    let mut cmd = Command::cargo_bin(PROJECT_NAME)?;
+    let mut cmd = get_cmd();
     cmd.arg("list-wallets");
     cmd.assert()
         .success()
@@ -60,7 +63,7 @@ fn test_create_wallet() -> Result<(), anyhow::Error> {
 
     // Create a new wallet
     // This is the first wallet created, so it will use index 0
-    let mut cmd = Command::cargo_bin(PROJECT_NAME)?;
+    let mut cmd = get_cmd();
     cmd.arg("create-wallet");
     cmd.arg("test-wallet");
     cmd.assert()
@@ -69,13 +72,13 @@ fn test_create_wallet() -> Result<(), anyhow::Error> {
             "Created new wallet with public_key:"
         )));
 
-    let mut cmd = Command::cargo_bin(PROJECT_NAME)?;
+    let mut cmd = get_cmd();
     cmd.arg("list-wallets");
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Wallets count: 1"));
 
-    let mut cmd = Command::cargo_bin(PROJECT_NAME)?;
+    let mut cmd = get_cmd();
     cmd.arg("wallet-info");
     cmd.arg("test-wallet");
     cmd.assert()
@@ -83,7 +86,7 @@ fn test_create_wallet() -> Result<(), anyhow::Error> {
         .stdout(predicate::str::contains(format!("Wallet: test-wallet")))
         .stdout(predicate::str::contains("- Balance: { immature: 0 BTC, trusted_pending: 0 BTC, untrusted_pending: 0 BTC, confirmed: 0 BTC }"));
 
-    let mut cmd = Command::cargo_bin(PROJECT_NAME)?;
+    let mut cmd = get_cmd();
     cmd.arg("regtest-fund");
     cmd.arg("test-wallet");
     cmd.assert()
@@ -92,7 +95,7 @@ fn test_create_wallet() -> Result<(), anyhow::Error> {
             "Wallet test-wallet funded with 150 BTC"
         )));
 
-    let mut cmd = Command::cargo_bin(PROJECT_NAME)?;
+    let mut cmd = get_cmd();
     cmd.arg("wallet-info");
     cmd.arg("test-wallet");
     cmd.assert()
@@ -100,7 +103,7 @@ fn test_create_wallet() -> Result<(), anyhow::Error> {
         .stdout(predicate::str::contains(format!("Wallet: test-wallet")))
         .stdout(predicate::str::contains("- Balance: { immature: 0 BTC, trusted_pending: 0 BTC, untrusted_pending: 0 BTC, confirmed: 150 BTC }"));
 
-    let mut cmd = Command::cargo_bin(PROJECT_NAME)?;
+    let mut cmd = get_cmd();
     cmd.arg("send-and-mine");
     cmd.arg("test-wallet");
     cmd.arg("bcrt1qs758ursh4q9z627kt3pp5yysm78ddny6txaqgw");
@@ -109,7 +112,7 @@ fn test_create_wallet() -> Result<(), anyhow::Error> {
         .success()
         .stdout(predicate::str::contains(format!("Funded address bcrt1qs758ursh4q9z627kt3pp5yysm78ddny6txaqgw with amount 100000000 satoshis and mined 1 block")));
 
-    let mut cmd = Command::cargo_bin(PROJECT_NAME)?;
+    let mut cmd = get_cmd();
     cmd.arg("wallet-info");
     cmd.arg("test-wallet");
     cmd.assert()

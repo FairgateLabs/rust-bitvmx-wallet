@@ -28,6 +28,7 @@
 //! ```
 
 use clap::{Parser, Subcommand};
+use key_manager::key_type::BitcoinKeyType;
 
 /// Main command-line interface for the BitVMX wallet.
 ///
@@ -140,9 +141,13 @@ pub enum Commands {
     /// # Arguments
     ///
     /// * `num_blocks` - Number of blocks to mine
+    /// * `key_type` - Bitcoin key type for the mining address
     Mine {
         /// Number of blocks to mine
         num_blocks: u64,
+        /// Bitcoin key type for the mining address
+        #[arg(short = 't', long = "key_type", default_value = "p2pkh")]
+        key_type: BitcoinKeyType,
     },
 
     /// Fund a wallet with 150 BTC (regtest only).
@@ -216,9 +221,13 @@ pub enum Commands {
     /// # Arguments
     ///
     /// * `identifier` - Unique identifier for the new wallet
+    /// * `key_type` - Bitcoin key type (p2pkh, p2wpkh, p2tr, etc.)
     CreateWallet {
         /// Unique identifier for the new wallet
         identifier: String,
+        /// Bitcoin key type
+        #[arg(short = 't', long = "key_type", default_value = "p2pkh")]
+        key_type: BitcoinKeyType,
     },
 
     /// Import a derived key pair from a specific index.
@@ -230,11 +239,15 @@ pub enum Commands {
     ///
     /// * `identifier` - Unique identifier for the new wallet
     /// * `index` - Derivation index for the key pair
+    /// * `key_type` - Bitcoin key type (p2pkh, p2wpkh, p2tr, etc.)
     ImportDeriveKeypair {
         /// Unique identifier for the new wallet
         identifier: String,
         /// Derivation index for the key pair
         index: u32,
+        /// Bitcoin key type
+        #[arg(short = 't', long = "key_type", default_value = "p2pkh")]
+        key_type: BitcoinKeyType,
     },
 
     /// Import a private key to create a wallet.

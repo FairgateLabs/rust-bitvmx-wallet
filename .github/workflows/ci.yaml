@@ -2,9 +2,6 @@ name: Test CI
 
 on:
   pull_request:
-    branches:
-      - main
-      - dev
 
 env:
   CARGO_TERM_COLOR: always
@@ -39,6 +36,9 @@ jobs:
 
       - name: Generate documentation
         run: cargo doc --no-deps
+
+      - name: Pull Bitcoin Docker Image
+        run: docker pull bitcoin/bitcoin:29.1
 
       - name: Run tests
         run: bash test.sh

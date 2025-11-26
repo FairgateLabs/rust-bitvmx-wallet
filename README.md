@@ -37,7 +37,7 @@ It is not production-ready, has not been audited, and future updates may introdu
 To run test use:
 
 ```sh
-cargo test -- --ignored --test-threads=1
+bash test.sh
 ```
 
 ## Quick Start

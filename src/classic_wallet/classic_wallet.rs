@@ -651,7 +651,7 @@ mod tests {
         let db_path = Path::new(path);
         info!("Clearing db at {}", db_path.display());
         if db_path.exists() {
-            std::fs::remove_file(db_path).unwrap();
+            std::fs::remove_dir_all(db_path).unwrap();
         }
     }
 

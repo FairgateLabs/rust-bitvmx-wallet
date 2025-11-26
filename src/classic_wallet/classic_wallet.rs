@@ -596,7 +596,7 @@ mod tests {
         Network,
     };
     use bitcoind::bitcoind::Bitcoind;
-    use std::{str::FromStr, sync::Once};
+    use std::{path::Path, str::FromStr, sync::Once};
     use tracing::info;
     use tracing_subscriber::EnvFilter;
 
@@ -648,7 +648,11 @@ mod tests {
     }
 
     fn clear_db(path: &str) {
-        let _ = std::fs::remove_dir_all(path);
+        let db_path = Path::new(path);
+        info!("Clearing db at {}", db_path.display());
+        if db_path.exists() {
+            std::fs::remove_file(db_path).unwrap();
+        }
     }
 
     fn setup_wallet() -> ClassicWallet {

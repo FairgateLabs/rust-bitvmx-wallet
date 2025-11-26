@@ -57,7 +57,7 @@ impl ClassicWallet {
         let storage = Rc::new(Storage::new(&config.storage)?);
         let key_manager = Rc::new(create_key_manager_from_config(
             &config.key_manager,
-            config.storage.clone(),
+            config.key_storage,
         )?);
 
         let bitcoin_client = if with_client {
@@ -679,7 +679,7 @@ mod tests {
         let wallet_name = "wallet_1";
         let funding_id = "fund_1";
 
-        wallet.create_wallet(wallet_name, BitcoinKeyType::P2tr)?;
+        wallet.create_wallet(wallet_name, BitcoinKeyType::P2wpkh)?;
         wallet.regtest_fund(wallet_name, funding_id, 100_000)?;
         let funds = wallet.list_funds(wallet_name)?;
         assert_eq!(funds.len(), 1);
@@ -1247,10 +1247,10 @@ mod tests {
         funding_access_data.insert(wallet_name2.to_string(), vec![funding_id3.to_string()]);
 
         wallet
-            .create_wallet(wallet_name1, BitcoinKeyType::P2tr)
+            .create_wallet(wallet_name1, BitcoinKeyType::P2wpkh)
             .unwrap();
         wallet
-            .create_wallet(wallet_name2, BitcoinKeyType::P2tr)
+            .create_wallet(wallet_name2, BitcoinKeyType::P2wpkh)
             .unwrap();
         wallet
             .regtest_fund(wallet_name1, funding_id1, 100_000)

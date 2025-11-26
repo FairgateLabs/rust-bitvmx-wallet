@@ -172,10 +172,9 @@ impl WalletManager {
     /// ```
     pub fn new(config: Config) -> Result<WalletManager, WalletError> {
         let storage: Rc<Storage> = Rc::new(Storage::new(&config.storage)?);
-        let storage_config = config.storage.clone();
         let key_manager = Rc::new(create_key_manager_from_config(
             &config.key_manager,
-            storage_config,
+            config.key_storage.clone(),
         )?);
         Ok(Self {
             config,

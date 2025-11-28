@@ -29,6 +29,7 @@
 //!
 //! ```rust,no_run
 //! use bitvmx_wallet::{Wallet, WalletManager, wallet::{config::Config, errors::WalletError}};
+//! use key_manager::key_type::BitcoinKeyType;
 //!
 //! # fn main() -> Result<(), WalletError> {
 //! // Load configuration from YAML file
@@ -40,7 +41,7 @@
 //! let wallet_manager = WalletManager::new(config)?;
 //!
 //! // Create a new wallet (single descriptor wallet)
-//! let wallet = wallet_manager.create_new_wallet("my_wallet")?;
+//! let wallet = wallet_manager.create_new_wallet("my_wallet", BitcoinKeyType::P2tr)?;
 //! # Ok(())
 //! # }
 //! ```

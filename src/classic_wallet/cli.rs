@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use key_manager::key_type::BitcoinKeyType;
 
 #[derive(Parser)]
 #[command(name = "bitvmx-wallet")]
@@ -15,7 +16,11 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     /// Create a new secret key
-    CreateWallet { identifier: String },
+    CreateWallet {
+        identifier: String,
+        #[arg(short = 't', long = "key_type", default_value = "p2wpkh")]
+        key_type: BitcoinKeyType,
+    },
     /// Import a secret key
     ImportKey {
         identifier: String,

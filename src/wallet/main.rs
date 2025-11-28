@@ -101,6 +101,8 @@ fn config_trace_aux() {
 /// bitvmx-wallet sync-wallet my_wallet
 /// ```
 fn main() {
+    // TODO select key type: up to now fixed to P2tr
+
     let cli = Cli::parse();
 
     // Use the config file specified by the user
@@ -207,11 +209,15 @@ fn main() {
                 Err(e) => eprintln!("Error: {e}"),
             }
         }
-        Commands::Mine { num_blocks } => {
+        Commands::Mine {
+            num_blocks,
+            key_type,
+        } => {
             let wallet = match Wallet::from_derive_keypair(
                 config.bitcoin.clone(),
                 config.wallet.clone(),
                 wallet_manager.key_manager.clone(),
+                *key_type,
                 0,
                 None,
             ) {
@@ -286,26 +292,31 @@ fn main() {
             println!("- Balance: {balance}");
             println!("- Pubkey: {pubkey}");
         }
-        Commands::CreateWallet { identifier } => {
-            match wallet_manager.create_new_wallet(identifier) {
-                Ok(mut new_wallet) => {
-                    println!(
-                        "Created new wallet with public_key: {}, start syncing",
-                        new_wallet.public_key
-                    );
-                    match new_wallet.sync_wallet() {
-                        Ok(_) => println!("Wallet synced"),
-                        Err(e) => {
-                            eprintln!("Error syncing wallet: {e}");
-                            process::exit(1);
-                        }
+        Commands::CreateWallet {
+            identifier,
+            key_type,
+        } => match wallet_manager.create_new_wallet(identifier, *key_type) {
+            Ok(mut new_wallet) => {
+                println!(
+                    "Created new wallet with public_key: {}, start syncing",
+                    new_wallet.public_key
+                );
+                match new_wallet.sync_wallet() {
+                    Ok(_) => println!("Wallet synced"),
+                    Err(e) => {
+                        eprintln!("Error syncing wallet: {e}");
+                        process::exit(1);
                     }
                 }
-                Err(e) => eprintln!("Error importing derived keypair: {e}"),
             }
-        }
-        Commands::ImportDeriveKeypair { identifier, index } => {
-            match wallet_manager.create_wallet_from_derive_keypair(identifier, *index) {
+            Err(e) => eprintln!("Error importing derived keypair: {e}"),
+        },
+        Commands::ImportDeriveKeypair {
+            identifier,
+            index,
+            key_type,
+        } => {
+            match wallet_manager.create_wallet_from_derive_keypair(identifier, *key_type, *index) {
                 Ok(mut new_wallet) => {
                     println!("Imported derived keypair from index {index}, starting sync");
                     match new_wallet.sync_wallet() {

@@ -57,7 +57,7 @@ impl ClassicWallet {
         let storage = Rc::new(Storage::new(&config.storage)?);
         let key_manager = Rc::new(create_key_manager_from_config(
             &config.key_manager,
-            config.key_storage,
+            &config.key_storage,
         )?);
 
         let bitcoin_client = if with_client {

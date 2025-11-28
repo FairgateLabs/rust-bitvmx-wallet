@@ -821,7 +821,7 @@ fn test_regtest_wallet() -> Result<(), anyhow::Error> {
     let config = clean_and_load_config("config/regtest.yaml")?;
     let key_manager = Rc::new(create_key_manager_from_config(
         &config.key_manager,
-        config.key_storage,
+        &config.key_storage,
     )?);
 
     let bitcoind = Bitcoind::new(
@@ -899,7 +899,7 @@ fn test_send_funds() -> Result<(), anyhow::Error> {
     let config = clean_and_load_config("config/regtest.yaml")?;
     let key_manager = Rc::new(create_key_manager_from_config(
         &config.key_manager,
-        config.key_storage,
+        &config.key_storage,
     )?);
 
     let bitcoind = Bitcoind::new(

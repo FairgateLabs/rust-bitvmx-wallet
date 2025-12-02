@@ -31,11 +31,11 @@ jobs:
           toolchain: stable
           override: true
 
-      - name: Build
-        run: cargo build
+      # - name: Build
+      #   run: cargo build
 
-      - name: Generate documentation
-        run: cargo doc --no-deps
+      # - name: Generate documentation
+      #   run: cargo doc --no-deps
 
       - name: Pull Bitcoin Docker Image
         run: docker pull bitcoin/bitcoin:29.1

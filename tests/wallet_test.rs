@@ -7,15 +7,14 @@ use bitvmx_wallet::wallet::{Destination, RegtestWallet, Wallet};
 // TODO: Remove this once the deprecated methods are removed from the BDK wallet
 use bdk_wallet::SignOptions;
 use bdk_wallet::TxOrdering;
+use key_manager::key_type::BitcoinKeyType;
 
 use crate::helper::clean_and_load_config;
 use anyhow::Result;
 use bitcoind::bitcoind::Bitcoind;
 use key_manager::create_key_manager_from_config;
-use key_manager::key_store::KeyStore;
 use std::rc::Rc;
 use std::str::FromStr;
-use storage_backend::storage::Storage;
 
 const P2WPKH_FEE_RATE: u64 = 141;
 const COINBASE_AMOUNT: u64 = 50;
@@ -820,12 +819,9 @@ fn test_bdk_wallet_build_tx() -> Result<(), anyhow::Error> {
 fn test_regtest_wallet() -> Result<(), anyhow::Error> {
     // Arrenge
     let config = clean_and_load_config("config/regtest.yaml")?;
-    let storage = Rc::new(Storage::new(&config.storage)?);
-    let key_store = KeyStore::new(storage.clone());
     let key_manager = Rc::new(create_key_manager_from_config(
         &config.key_manager,
-        key_store,
-        storage.clone(),
+        &config.key_storage,
     )?);
 
     let bitcoind = Bitcoind::new(
@@ -839,6 +835,7 @@ fn test_regtest_wallet() -> Result<(), anyhow::Error> {
         config.bitcoin.clone(),
         config.wallet.clone(),
         key_manager.clone(),
+        BitcoinKeyType::P2tr,
         0,
         Some(1),
     )?;
@@ -900,12 +897,9 @@ fn test_regtest_wallet() -> Result<(), anyhow::Error> {
 fn test_send_funds() -> Result<(), anyhow::Error> {
     // Arrenge
     let config = clean_and_load_config("config/regtest.yaml")?;
-    let storage = Rc::new(Storage::new(&config.storage)?);
-    let key_store = KeyStore::new(storage.clone());
     let key_manager = Rc::new(create_key_manager_from_config(
         &config.key_manager,
-        key_store,
-        storage.clone(),
+        &config.key_storage,
     )?);
 
     let bitcoind = Bitcoind::new(
@@ -919,6 +913,7 @@ fn test_send_funds() -> Result<(), anyhow::Error> {
         config.bitcoin.clone(),
         config.wallet.clone(),
         key_manager.clone(),
+        BitcoinKeyType::P2tr,
         0,
         Some(1),
     )?;

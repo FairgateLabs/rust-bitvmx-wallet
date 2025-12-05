@@ -60,7 +60,7 @@ use bitcoin::{
 };
 
 use bitvmx_bitcoin_rpc::{reqwest_https::ReqwestHttpsTransport, rpc_config::RpcConfig};
-use key_manager::key_manager::KeyManager;
+use key_manager::{key_manager::KeyManager, key_type::BitcoinKeyType};
 use tracing::{debug, error, info, trace};
 
 use bdk_bitcoind_rpc::{
@@ -289,6 +289,7 @@ impl Wallet {
     /// # use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}};
     /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
     /// # use key_manager::key_manager::KeyManager;
+    /// # use key_manager::key_type::BitcoinKeyType;
     /// # use std::rc::Rc;
     /// # fn example() -> Result<(), anyhow::Error> {
     /// # let bitcoin_config = RpcConfig {
@@ -307,6 +308,7 @@ impl Wallet {
     ///     bitcoin_config,
     ///     wallet_config,
     ///     key_manager,
+    ///     BitcoinKeyType::P2tr, // Key type (P2tr, P2wpkh, etc.)
     ///     0, // Use index 0 for the main key
     ///     Some(1), // Use index 1 for change addresses (must be different from main key)
     /// )?;
@@ -317,14 +319,15 @@ impl Wallet {
         bitcoin_config: RpcConfig,
         wallet_config: WalletConfig,
         key_manager: Rc<KeyManager>,
+        key_type: BitcoinKeyType,
         index: u32,
         change_index: Option<u32>,
     ) -> Result<Wallet, WalletError> {
-        let public_key = key_manager.derive_keypair(index)?;
+        let public_key = key_manager.derive_keypair(key_type, index)?;
         let descriptor = p2wpkh_descriptor(&key_manager.export_secret(&public_key)?.to_wif())?;
         let change_descriptor = match change_index {
             Some(change_index) => {
-                let change_public_key = key_manager.derive_keypair(change_index)?;
+                let change_public_key = key_manager.derive_keypair(key_type, change_index)?;
                 Some(p2wpkh_descriptor(
                     &key_manager.export_secret(&change_public_key)?.to_wif(),
                 )?)

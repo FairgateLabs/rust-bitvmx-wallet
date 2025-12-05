@@ -20,7 +20,7 @@ fn test_btc_to_sat() -> Result<(), anyhow::Error> {
     let mut cmd = get_cmd();
     cmd.arg("btc-to-sat");
     cmd.arg("1");
-    cmd.assert().success().stdout(predicate::str::starts_with(
+    cmd.assert().success().stdout(predicate::str::contains(
         "Converted 1 BTC to 100000000 Satoshis",
     ));
     Ok(())

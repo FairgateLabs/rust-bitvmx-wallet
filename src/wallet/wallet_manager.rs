@@ -15,7 +15,8 @@
 //!
 //! ```rust,no_run
 //! use bitvmx_wallet::{WalletManager, wallet::{config::Config, errors::WalletError}};
-//! fn main() -> Result<(), WalletError> {  
+//! use key_manager::key_type::BitcoinKeyType;
+//! fn main() -> Result<(), WalletError> {
 //!     // Load configuration from YAML file
 //!     let config = bitvmx_settings::settings::load_config_file::<Config>(Some(
 //!         "config/regtest.yaml".to_string()
@@ -25,7 +26,7 @@
 //!     let wallet_manager = WalletManager::new(config)?;
 //!
 //!     // Create a new wallet
-//!     let wallet = wallet_manager.create_new_wallet("my_wallet")?;
+//!     let wallet = wallet_manager.create_new_wallet("my_wallet", BitcoinKeyType::P2tr)?;
 //!
 //!     // List all wallets
 //!     let wallets = wallet_manager.list_wallets()?;
@@ -41,7 +42,9 @@ use crate::{
     RegtestWallet, Wallet,
 };
 use bitcoin::PublicKey;
-use key_manager::{create_key_manager_from_config, key_manager::KeyManager, key_store::KeyStore};
+use key_manager::{
+    create_key_manager_from_config, key_manager::KeyManager, key_type::BitcoinKeyType,
+};
 use std::rc::Rc;
 use storage_backend::storage::{KeyValueStore, Storage};
 use tracing::{error, info};
@@ -99,6 +102,7 @@ impl StoreKey {
 ///
 /// ```rust,no_run
 /// use bitvmx_wallet::{WalletManager, wallet::config::Config};
+/// use key_manager::key_type::BitcoinKeyType;
 ///
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///
@@ -111,7 +115,7 @@ impl StoreKey {
 ///     let wallet_manager = WalletManager::new(config)?;
 ///
 ///     // Create a new wallet (single descriptor wallet)
-///     let wallet = wallet_manager.create_new_wallet("alice_wallet")?;
+///     let wallet = wallet_manager.create_new_wallet("alice_wallet", BitcoinKeyType::P2tr)?;
 ///
 ///     // Load an existing wallet
 ///     let wallet = wallet_manager.load_wallet("alice_wallet")?;
@@ -155,7 +159,7 @@ impl WalletManager {
     ///
     /// ```rust,no_run
     /// use bitvmx_wallet::{WalletManager, wallet::{config::Config, errors::WalletError}};
-    /// fn main() -> Result<(), WalletError> {  
+    /// fn main() -> Result<(), WalletError> {
     ///     // Load configuration from YAML file
     ///     let config = bitvmx_settings::settings::load_config_file::<Config>(Some(
     ///         "config/regtest.yaml".to_string()
@@ -168,11 +172,9 @@ impl WalletManager {
     /// ```
     pub fn new(config: Config) -> Result<WalletManager, WalletError> {
         let storage: Rc<Storage> = Rc::new(Storage::new(&config.storage)?);
-        let key_store = KeyStore::new(storage.clone());
         let key_manager = Rc::new(create_key_manager_from_config(
             &config.key_manager,
-            key_store,
-            storage.clone(),
+            &config.key_storage.clone(),
         )?);
         Ok(Self {
             config,
@@ -244,15 +246,20 @@ impl WalletManager {
     ///
     /// ```rust,no_run
     /// # use bitvmx_wallet::WalletManager;
+    /// # use key_manager::key_type::BitcoinKeyType;
     /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # let config = bitvmx_settings::settings::load_config_file::<bitvmx_wallet::wallet::config::Config>(Some("config/regtest.yaml".to_string()))?;
     /// # let wallet_manager = WalletManager::new(config)?;
-    /// let wallet = wallet_manager.create_new_wallet("alice_wallet")?;
+    /// let wallet = wallet_manager.create_new_wallet("alice_wallet", BitcoinKeyType::P2tr)?;
     /// println!("Created wallet with public key: {}", wallet.public_key);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn create_new_wallet(&self, identifier: &str) -> Result<Wallet, WalletError> {
+    pub fn create_new_wallet(
+        &self,
+        identifier: &str,
+        key_type: BitcoinKeyType,
+    ) -> Result<Wallet, WalletError> {
         let store_key = StoreKey::Wallet(identifier.to_string());
         let key = store_key.get_key();
         if self.store.has_key(&key)? {
@@ -267,6 +274,7 @@ impl WalletManager {
             self.config.bitcoin.clone(),
             config_wallet,
             self.key_manager.clone(),
+            key_type,
             index,
             None,
         )?;
@@ -300,10 +308,11 @@ impl WalletManager {
     ///
     /// ```rust,no_run
     /// # use bitvmx_wallet::WalletManager;
+    /// # use key_manager::key_type::BitcoinKeyType;
     /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # let config = bitvmx_settings::settings::load_config_file::<bitvmx_wallet::wallet::config::Config>(Some("config/regtest.yaml".to_string()))?;
     /// # let wallet_manager = WalletManager::new(config)?;
-    /// let wallet = wallet_manager.create_wallet_from_derive_keypair("bob_wallet", 42)?;
+    /// let wallet = wallet_manager.create_wallet_from_derive_keypair("bob_wallet", BitcoinKeyType::P2tr, 42)?;
     /// println!("Created wallet with public key: {}", wallet.public_key);
     /// # Ok(())
     /// # }
@@ -311,6 +320,7 @@ impl WalletManager {
     pub fn create_wallet_from_derive_keypair(
         &self,
         identifier: &str,
+        key_type: BitcoinKeyType,
         index: u32,
     ) -> Result<Wallet, WalletError> {
         let store_key = StoreKey::Wallet(identifier.to_string());
@@ -326,6 +336,7 @@ impl WalletManager {
             self.config.bitcoin.clone(),
             config_wallet,
             self.key_manager.clone(),
+            key_type,
             index,
             None,
         )?;

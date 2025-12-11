@@ -37,7 +37,7 @@ cargo run -- [OPTIONS] <COMMAND>
 ### Commands
 
 - `create-wallet <IDENTIFIER>`  
-  Create a new logical wallet (generates a new keypair and stores it locally).
+  Create a new logical wallet (generates a new keypair using P2TR key type and stores it locally).
 
 - `import-key <IDENTIFIER> <SECRET_KEY>`  
   Import a secret key (hex or WIF) for an identifier.

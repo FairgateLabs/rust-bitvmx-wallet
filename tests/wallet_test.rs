@@ -13,6 +13,7 @@ use crate::helper::clean_and_load_config;
 use anyhow::Result;
 use bitcoind::bitcoind::Bitcoind;
 use key_manager::create_key_manager_from_config;
+use redact::Secret;
 use std::rc::Rc;
 use std::str::FromStr;
 
@@ -28,7 +29,7 @@ fn test_bdk_wallet_sync_wallet() -> Result<(), anyhow::Error> {
     // Test sync errors
     // Create a wallet with invalid Bitcoin config
     let mut invalid_bitcoin_config = config.bitcoin.clone();
-    invalid_bitcoin_config.url = "http://127.0.0.1:666".to_string(); //invalid port
+    invalid_bitcoin_config.url = Secret::new("http://127.0.0.1:666".to_string()); //invalid port
 
     let private_key = "cVt4o7BGAig1UXywgGSmARhxMdzP5qvQsxKkSsc1XEkw3tDTQFpy";
     let mut wallet = Wallet::from_private_key(

@@ -541,7 +541,7 @@ impl ClassicWallet {
                 .store
                 .get(&key)?
                 .ok_or(ClassicWalletError::KeyNotFound(identifier.to_string()))?;
-            let address = bitcoin_client.get_new_address(origin_pub_key, self.network);
+            let address = bitcoin_client.get_new_address(origin_pub_key, self.network)?;
             let (tx, vout) = bitcoin_client.fund_address(&address, Amount::from_sat(amount))?;
             let txid = tx.compute_txid();
             self.add_funding(identifier, funding_id, OutPoint { txid, vout }, amount)?;

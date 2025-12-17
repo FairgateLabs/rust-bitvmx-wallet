@@ -139,11 +139,12 @@ impl Config {
     /// # use key_manager::config::KeyManagerConfig;
     /// # use storage_backend::storage_config::StorageConfig;
     /// # use bitcoin::Network;
+    /// # use redact::Secret;
     /// # fn example() -> Result<(), anyhow::Error> {
     /// # let bitcoin_config = RpcConfig {
-    /// #     url: "http://localhost:18443".to_string(),
-    /// #     username: "foo".to_string(),
-    /// #     password: "rpcpassword".to_string(),
+    /// #     url: Secret::new("http://localhost:18443".to_string()),
+    /// #     username: Secret::new("foo".to_string()),
+    /// #     password: Secret::new("rpcpassword".to_string()),
     /// #     network: Network::Regtest,
     /// #     wallet: "test_wallet".to_string(),
     /// # };

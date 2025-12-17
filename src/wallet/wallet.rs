@@ -18,12 +18,13 @@
 //! use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}};
 //! use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
 //! use bitcoin::Network;
+//! use redact::Secret;
 //!
 //! # fn main() -> Result<(), anyhow::Error> {
 //!     # let rpc_config = RpcConfig {
-//!     #     url: "http://localhost:18443".to_string(),
-//!     #     username: "foo".to_string(),
-//!     #     password: "rpcpassword".to_string(),
+//!     #     url: Secret::new("http://localhost:18443".to_string()),
+//!     #     username: Secret::new("foo".to_string()),
+//!     #     password: Secret::new("rpcpassword".to_string()),
 //!     #     network: Network::Regtest,
 //!     #     wallet: "test_wallet".to_string(),
 //!     # };
@@ -109,12 +110,13 @@ use std::{
 /// use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}};
 /// use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
 /// use bitcoin::Network;
+/// use redact::Secret;
 ///
 /// # fn main() -> Result<(), anyhow::Error> {
 ///     # let rpc_config = RpcConfig {
-///     #     url: "http://localhost:18443".to_string(),
-///     #     username: "foo".to_string(),
-///     #     password: "rpcpassword".to_string(),
+///     #     url: Secret::new("http://localhost:18443".to_string()),
+///     #     username: Secret::new("foo".to_string()),
+///     #     password: Secret::new("rpcpassword".to_string()),
 ///     #     network: Network::Regtest,
 ///     #     wallet: "test_wallet".to_string(),
 ///     # };
@@ -209,13 +211,14 @@ impl Wallet {
     /// # use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}};
     /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
     /// # use bitcoin::PublicKey;
+    /// # use redact::Secret;
     /// # use key_manager::key_manager::KeyManager;
     /// # use std::{rc::Rc, str::FromStr};
     /// # fn example() -> Result<(), anyhow::Error> {
     /// # let bitcoin_config = RpcConfig {
-    /// #     url: "http://localhost:18443".to_string(),
-    /// #     username: "foo".to_string(),
-    /// #     password: "rpcpassword".to_string(),
+    /// #     url: Secret::new("http://localhost:18443".to_string()),
+    /// #     username: Secret::new("foo".to_string()),
+    /// #     password: Secret::new("rpcpassword".to_string()),
     /// #     network: bitcoin::Network::Regtest,
     /// #     wallet: "test_wallet".to_string(),
     /// # };
@@ -291,11 +294,12 @@ impl Wallet {
     /// # use key_manager::key_manager::KeyManager;
     /// # use key_manager::key_type::BitcoinKeyType;
     /// # use std::rc::Rc;
+    /// # use redact::Secret;
     /// # fn example() -> Result<(), anyhow::Error> {
     /// # let bitcoin_config = RpcConfig {
-    /// #     url: "http://localhost:18443".to_string(),
-    /// #     username: "foo".to_string(),
-    /// #     password: "rpcpassword".to_string(),
+    /// #     url: Secret::new("http://localhost:18443".to_string()),
+    /// #     username: Secret::new("foo".to_string()),
+    /// #     password: Secret::new("rpcpassword".to_string()),
     /// #     network: bitcoin::Network::Regtest,
     /// #     wallet: "test_wallet".to_string(),
     /// # };
@@ -373,11 +377,12 @@ impl Wallet {
     /// ```rust,no_run
     /// # use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}};
     /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+    /// # use redact::Secret;
     /// # fn example() -> Result<(), anyhow::Error> {
     /// # let bitcoin_config = RpcConfig {
-    /// #     url: "http://localhost:18443".to_string(),
-    /// #     username: "foo".to_string(),
-    /// #     password: "rpcpassword".to_string(),
+    /// #     url: Secret::new("http://localhost:18443".to_string()),
+    /// #     username: Secret::new("foo".to_string()),
+    /// #     password: Secret::new("rpcpassword".to_string()),
     /// #     network: bitcoin::Network::Regtest,
     /// #     wallet: "test_wallet".to_string(),
     /// # };
@@ -444,11 +449,12 @@ impl Wallet {
     /// ```rust,no_run
     /// # use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}};
     /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+    /// # use redact::Secret;
     /// # fn example() -> Result<(), anyhow::Error> {
     /// # let bitcoin_config = RpcConfig {
-    /// #     url: "http://localhost:18443".to_string(),
-    /// #     username: "foo".to_string(),
-    /// #     password: "rpcpassword".to_string(),
+    /// #     url: Secret::new("http://localhost:18443".to_string()),
+    /// #     username: Secret::new("foo".to_string()),
+    /// #     password: Secret::new("rpcpassword".to_string()),
     /// #     network: bitcoin::Network::Regtest,
     /// #     wallet: "test_wallet".to_string(),
     /// # };
@@ -512,12 +518,13 @@ impl Wallet {
     /// # use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}};
     /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
     /// # use key_manager::key_manager::KeyManager;
+    /// # use redact::Secret;
     /// # use std::rc::Rc;
     /// # fn example() -> Result<(), anyhow::Error> {
     /// # let bitcoin_config = RpcConfig {
-    /// #     url: "http://localhost:18443".to_string(),
-    /// #     username: "foo".to_string(),
-    /// #     password: "rpcpassword".to_string(),
+    /// #     url: Secret::new("http://localhost:18443".to_string()),
+    /// #     username: Secret::new("foo".to_string()),
+    /// #     password: Secret::new("rpcpassword".to_string()),
     /// #     network: bitcoin::Network::Regtest,
     /// #     wallet: "test_wallet".to_string(),
     /// # };
@@ -604,11 +611,12 @@ impl Wallet {
     /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
     /// # use bitcoin::PublicKey;
     /// # use std::str::FromStr;
+    /// # use redact::Secret;
     /// # fn example() -> Result<(), anyhow::Error> {
     /// # let bitcoin_config = RpcConfig {
-    /// #     url: "http://localhost:18443".to_string(),
-    /// #     username: "foo".to_string(),
-    /// #     password: "rpcpassword".to_string(),
+    /// #     url: Secret::new("http://localhost:18443".to_string()),
+    /// #     username: Secret::new("foo".to_string()),
+    /// #     password: Secret::new("rpcpassword".to_string()),
     /// #     network: bitcoin::Network::Regtest,
     /// #     wallet: "test_wallet".to_string(),
     /// # };
@@ -634,19 +642,29 @@ impl Wallet {
         change_descriptor: Option<&str>,
     ) -> Result<Wallet, WalletError> {
         // Create a Bitcoin RPC client
-        let transport = if bitcoin_config.username != "" {
+        let transport = if !bitcoin_config.username.expose_secret().is_empty() {
             ReqwestHttpsTransport::builder()
-                .url(&bitcoin_config.url.clone())
-                .map_err(|e| WalletError::URLError(bitcoin_config.url, e.to_string()))?
+                .url(&bitcoin_config.url.expose_secret())
+                .map_err(|e| {
+                    WalletError::URLError(
+                        bitcoin_config.url.expose_secret().to_owned(),
+                        e.to_string(),
+                    )
+                })?
                 .basic_auth(
-                    bitcoin_config.username.to_owned(),
-                    Some(bitcoin_config.password.clone()),
+                    bitcoin_config.username.expose_secret().to_owned(),
+                    Some(bitcoin_config.password.expose_secret().to_owned()),
                 )
                 .build()
         } else {
             ReqwestHttpsTransport::builder()
-                .url(&bitcoin_config.url)
-                .map_err(|e| WalletError::URLError(bitcoin_config.url, e.to_string()))?
+                .url(&bitcoin_config.url.expose_secret())
+                .map_err(|e| {
+                    WalletError::URLError(
+                        bitcoin_config.url.expose_secret().to_owned(),
+                        e.to_string(),
+                    )
+                })?
                 .build()
         };
 
@@ -744,11 +762,12 @@ impl Wallet {
     /// ```rust,no_run
     /// # use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}};
     /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+    /// # use redact::Secret;
     /// # fn example() -> Result<(), anyhow::Error> {
     /// # let bitcoin_config = RpcConfig {
-    /// #     url: "http://localhost:18443".to_string(),
-    /// #     username: "foo".to_string(),
-    /// #     password: "rpcpassword".to_string(),
+    /// #     url: Secret::new("http://localhost:18443".to_string()),
+    /// #     username: Secret::new("foo".to_string()),
+    /// #     password: Secret::new("rpcpassword".to_string()),
     /// #     network: bitcoin::Network::Regtest,
     /// #     wallet: "test_wallet".to_string(),
     /// # };
@@ -779,12 +798,13 @@ impl Wallet {
     ///
     /// ```rust,no_run
     /// # use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}};
+    /// # use redact::Secret;
     /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
     /// # fn example() -> Result<(), anyhow::Error> {
     /// # let bitcoin_config = RpcConfig {
-    /// #     url: "http://localhost:18443".to_string(),
-    /// #     username: "foo".to_string(),
-    /// #     password: "rpcpassword".to_string(),
+    /// #     url: Secret::new("http://localhost:18443".to_string()),
+    /// #     username: Secret::new("foo".to_string()),
+    /// #     password: Secret::new("rpcpassword".to_string()),
     /// #     network: bitcoin::Network::Regtest,
     /// #     wallet: "test_wallet".to_string(),
     /// # };
@@ -822,11 +842,12 @@ impl Wallet {
     /// ```rust,no_run
     /// # use bitvmx_wallet::{Wallet, wallet::{config::WalletConfig, errors::WalletError}};
     /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
+    /// # use redact::Secret;
     /// # fn example() -> Result<(), anyhow::Error> {
     /// # let bitcoin_config = RpcConfig {
-    /// #     url: "http://localhost:18443".to_string(),
-    /// #     username: "foo".to_string(),
-    /// #     password: "rpcpassword".to_string(),
+    /// #     url: Secret::new("http://localhost:18443".to_string()),
+    /// #     username: Secret::new("foo".to_string()),
+    /// #     password: Secret::new("rpcpassword".to_string()),
     /// #     network: bitcoin::Network::Regtest,
     /// #     wallet: "test_wallet".to_string(),
     /// # };
@@ -951,11 +972,12 @@ impl Wallet {
     /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
     /// # use bitcoin::PublicKey;
     /// # use std::str::FromStr;
+    /// # use redact::Secret;
     /// # fn example() -> Result<(), anyhow::Error> {
     /// # let bitcoin_config = RpcConfig {
-    /// #     url: "http://localhost:18443".to_string(),
-    /// #     username: "foo".to_string(),
-    /// #     password: "rpcpassword".to_string(),
+    /// #     url: Secret::new("http://localhost:18443".to_string()),
+    /// #     username: Secret::new("foo".to_string()),
+    /// #     password: Secret::new("rpcpassword".to_string()),
     /// #     network: bitcoin::Network::Regtest,
     /// #     wallet: "test_wallet".to_string(),
     /// # };
@@ -1053,11 +1075,12 @@ impl Wallet {
     /// # use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
     /// # use bitcoin::PublicKey;
     /// # use std::str::FromStr;
+    /// # use redact::Secret;
     /// # fn example() -> Result<(), anyhow::Error> {
     /// # let bitcoin_config = RpcConfig {
-    /// #     url: "http://localhost:18443".to_string(),
-    /// #     username: "foo".to_string(),
-    /// #     password: "rpcpassword".to_string(),
+    /// #     url: Secret::new("http://localhost:18443".to_string()),
+    /// #     username: Secret::new("foo".to_string()),
+    /// #     password: Secret::new("rpcpassword".to_string()),
     /// #     network: bitcoin::Network::Regtest,
     /// #     wallet: "test_wallet".to_string(),
     /// # };

@@ -25,7 +25,7 @@ ctrlc = "3.3.0"
 bitcoind = { git = "https://github.com/FairgateLabs/rust-bitcoind.git", branch = "v.0.0.2" }
 assert_cmd = "2.0"
 predicates = "3.1"
-redact = { version = "0.1", features = ["serde"] }
+redact = { version = "0.1", features = ["serde", "zeroize"] }
 
 [lib]
 name = "bitvmx_wallet"

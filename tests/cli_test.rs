@@ -1,13 +1,12 @@
 #![cfg(test)]
 mod helper;
 use crate::helper::{clean_and_load_config, clear_db};
-use assert_cmd::cargo::cargo_bin_cmd;
-use assert_cmd::Command;
+use assert_cmd::{cargo::cargo_bin, Command};
 use bitcoind::bitcoind::Bitcoind;
 use predicates::prelude::*;
 
 fn get_cmd() -> Command {
-    cargo_bin_cmd!("wallet")
+    Command::new(cargo_bin!("wallet"))
 }
 
 #[test]

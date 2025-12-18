@@ -1,6 +1,6 @@
 # rust-bitvmx-wallet
 
-A simple Bitcoin wallet CLI for the BitVMX project, built in Rust.  
+A simple Bitcoin wallet CLI for the BitVMX project, built in Rust.
 This tool allows you to manage keys, fund and spend from addresses, and interact with a Bitcoin node (regtest, testnet, or mainnet).
 
 ## ⚠️ Disclaimer
@@ -36,43 +36,43 @@ cargo run -- [OPTIONS] <COMMAND>
 
 ### Commands
 
-- `create-wallet <IDENTIFIER>`  
+- `create-wallet <IDENTIFIER>`
   Create a new logical wallet (generates a new keypair using P2TR key type and stores it locally).
 
-- `import-key <IDENTIFIER> <SECRET_KEY>`  
+- `import-key <IDENTIFIER> <SECRET_KEY>`
   Import a secret key (hex or WIF) for an identifier.
 
-- `export-wallet <IDENTIFIER>`  
+- `export-wallet <IDENTIFIER>`
   Export the public and secret key for a wallet.
 
-- `add-funding <IDENTIFIER> <FUNDING_ID> <OUTPOINT> <AMOUNT>`  
+- `add-funding <IDENTIFIER> <FUNDING_ID> <OUTPOINT> <AMOUNT>`
   Register a UTXO as funding (OUTPOINT format: `"txid:vout"`).
 
-- `remove-funding <IDENTIFIER> <FUNDING_ID>`  
+- `remove-funding <IDENTIFIER> <FUNDING_ID>`
   Remove a funding entry.
 
-- `fund-address <IDENTIFIER> <FUNDING_ID> <TO_PUBKEY> <AMOUNT> <FEE> {OUTPUT_IS_TAPROOT = FALSE}`  
+- `fund-address <IDENTIFIER> <FUNDING_ID> <TO_PUBKEY> <AMOUNT> <FEE> {OUTPUT_IS_TAPROOT = FALSE}`
   Send funds to a public key.
 
-- `confirm-transfer <IDENTIFIER> <FUNDING_ID>`  
+- `confirm-transfer <IDENTIFIER> <FUNDING_ID>`
   Confirm a pending transfer.
 
-- `revert-transfer <IDENTIFIER> <FUNDING_ID>`  
+- `revert-transfer <IDENTIFIER> <FUNDING_ID>`
   Revert a pending transfer.
 
-- `list-funds <IDENTIFIER>`  
+- `list-funds <IDENTIFIER>`
   List all funds for an identifier.
 
-- `mine <NUM_BLOCKS>`  
+- `mine <NUM_BLOCKS>`
   Mine blocks (regtest only).
 
-- `regtest-fund <IDENTIFIER> <FUNDING_ID> <AMOUNT>`  
+- `regtest-fund <IDENTIFIER> <FUNDING_ID> <AMOUNT>`
   Fund an identifier using regtest coins (only works if your node is in regtest mode and the wallet name matches).
 
-- `btc-to-sat <BTC>`  
+- `btc-to-sat <BTC>`
   Convert BTC to Satoshis.
 
-- `list-wallets`  
+- `list-wallets`
   List all wallet identifiers and their public keys.
 
 ## Example workflow
@@ -99,7 +99,7 @@ cargo run -- mine 1
 
 ## Configuration
 
-The wallet expects a YAML config file (default: `config/regtest.yaml`).  
+The wallet expects a YAML config file (default: `config/regtest.yaml`).
 You can specify a different config file with `-c` or `--config`.
 
 Example `config/regtest.yaml`:
@@ -125,11 +125,11 @@ storage:
 
 ## Key Management Notes
 
-- **Regtest:**  
+- **Regtest:**
   Use `create-wallet` to generate new keys and addresses for testing and mining.
 
-- **Testnet/Mainnet:**  
-  Use `import-key` to import an existing secret key (WIF format) that controls funds on a P2WPKH (bech32) address.  
+- **Testnet/Mainnet:**
+  Use `import-key` to import an existing secret key (WIF format) that controls funds on a P2WPKH (bech32) address.
   After importing, use `add-funding` to register the UTXO (by txid:vout and amount) that you control with this key.
 
 ## Important

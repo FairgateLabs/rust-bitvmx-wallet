@@ -190,10 +190,10 @@ impl ClassicWallet {
 
         let aggregated_public_key = if partial_keys.iter().all(|key| key.len() == 64) {
             self.key_manager
-                .import_partial_secret_keys(partial_keys, network)?
+                .import_partial_secret_keys(partial_keys.into(), network)?
         } else if partial_keys.iter().all(|key| key.len() == 52) {
             self.key_manager
-                .import_partial_private_keys(partial_keys, network)?
+                .import_partial_private_keys(partial_keys.into(), network)?
         } else {
             error!("Invalid partial private keys provided");
             return Err(ClassicWalletError::InvalidPartialPrivateKeys);

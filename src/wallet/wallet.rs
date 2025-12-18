@@ -556,9 +556,9 @@ impl Wallet {
             return Err(WalletError::InvalidPartialPrivateKeys);
         }
         let aggregated_public_key = if partial_private_keys.iter().all(|key| key.len() == 64) {
-            key_manager.import_partial_secret_keys(partial_private_keys, bitcoin_config.network)?
+            key_manager.import_partial_secret_keys(partial_private_keys.into(), bitcoin_config.network)?
         } else if partial_private_keys.iter().all(|key| key.len() == 52) {
-            key_manager.import_partial_private_keys(partial_private_keys, bitcoin_config.network)?
+            key_manager.import_partial_private_keys(partial_private_keys.into(), bitcoin_config.network)?
         } else {
             error!("Invalid partial private keys provided");
             return Err(WalletError::InvalidPartialPrivateKeys);

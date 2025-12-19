@@ -73,4 +73,5 @@ jobs:
       cargo_lock_path: 'rust-bitvmx-wallet/Cargo.lock'
       target_path: 'rust-bitvmx-wallet/target'
       submodule_branches: '{}'
+      single_thread_tests: true
     secrets: inherit

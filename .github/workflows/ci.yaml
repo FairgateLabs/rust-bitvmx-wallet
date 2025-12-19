@@ -68,9 +68,9 @@ jobs:
   test:
     uses: FairgateLabs/BitVMX-CI/.github/workflows/ci_local_template.yml@main
     with:
-      repo: 'FairgateLabs/rust-bitvmx-wallet'
+      repo: 'FairgateLabs/rust-bitvmx-workspace'
       submodule_path: 'rust-bitvmx-wallet'
       cargo_lock_path: 'rust-bitvmx-wallet/Cargo.lock'
-      target_path: 'rrust-bitvmx-wallet/target'
+      target_path: 'rust-bitvmx-wallet/target'
       submodule_branches: '{}'
     secrets: inherit

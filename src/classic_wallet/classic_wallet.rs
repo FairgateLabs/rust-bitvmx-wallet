@@ -668,11 +668,7 @@ mod tests {
     #[ignore]
     fn test_fund_address() -> Result<(), anyhow::Error> {
         let config = clean_and_load_config("config/regtest.yaml")?;
-        let bitcoind_config = BitcoindConfig::new(
-            "bitcoin-regtest", 
-            "bitcoin/bitcoin:29.1", 
-            None, 
-            config.bitcoin.clone());
+        let bitcoind_config = BitcoindConfig::default();
 
         let bitcoind = Bitcoind::new(
             bitcoind_config,
@@ -835,11 +831,7 @@ mod tests {
     fn test_use_private_musig_to_fund_address() {
         let config = clean_and_load_config("config/regtest.yaml").unwrap();
 
-        let bitcoind_config = BitcoindConfig::new(
-            "bitcoin-regtest", 
-            "bitcoin/bitcoin:29.1", 
-            None, 
-            config.bitcoin.clone());
+        let bitcoind_config = BitcoindConfig::default();
 
         let bitcoind = Bitcoind::new(
             bitcoind_config,
@@ -1236,11 +1228,7 @@ mod tests {
     fn test_merge_utxos() {
         let config = clean_and_load_config("config/regtest.yaml").unwrap();
 
-        let bitcoind_config = BitcoindConfig::new(
-            "bitcoin-regtest", 
-            "bitcoin/bitcoin:29.1", 
-            None, 
-            config.bitcoin.clone());
+        let bitcoind_config = BitcoindConfig::default();
 
         let bitcoind = Bitcoind::new(
             bitcoind_config,

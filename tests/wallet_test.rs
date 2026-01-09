@@ -1,6 +1,7 @@
 #![cfg(test)]
 mod helper;
 use bitcoin::{Address, Amount, Network, PublicKey, ScriptBuf};
+use bitcoind::config::BitcoindConfig;
 use bitvmx_wallet::wallet::{Destination, RegtestWallet, Wallet};
 
 #[allow(deprecated)]
@@ -76,9 +77,9 @@ fn test_bdk_wallet_sync_wallet() -> Result<(), anyhow::Error> {
     // Test successfull sync
     // Start a Bitcoin node
     let bitcoind = Bitcoind::new(
-        "bitcoin-regtest",
-        "bitcoin/bitcoin:29.1",
+        BitcoindConfig::default(),
         config.bitcoin.clone(),
+        None
     );
     bitcoind.start()?;
 
@@ -155,9 +156,9 @@ fn test_bdk_wallet() -> Result<(), anyhow::Error> {
     let config = clean_and_load_config("config/regtest.yaml")?;
 
     let bitcoind = Bitcoind::new(
-        "bitcoin-regtest",
-        "bitcoin/bitcoin:29.1",
+        BitcoindConfig::default(),
         config.bitcoin.clone(),
+        None
     );
     bitcoind.start()?;
 
@@ -231,9 +232,9 @@ fn test_bdk_wallet_load_different_wallet_same_db() -> Result<(), anyhow::Error> 
     let config = clean_and_load_config("config/regtest.yaml")?;
 
     let bitcoind = Bitcoind::new(
-        "bitcoin-regtest",
-        "bitcoin/bitcoin:29.1",
+        BitcoindConfig::default(),
         config.bitcoin.clone(),
+        None
     );
     bitcoind.start()?;
 
@@ -336,9 +337,9 @@ fn test_bdk_wallet_balance() -> Result<(), anyhow::Error> {
     let config = clean_and_load_config("config/regtest.yaml")?;
 
     let bitcoind = Bitcoind::new(
-        "bitcoin-regtest",
-        "bitcoin/bitcoin:29.1",
+        BitcoindConfig::default(),
         config.bitcoin.clone(),
+        None
     );
     bitcoind.start()?;
 
@@ -613,9 +614,9 @@ fn test_bdk_wallet_balance_with_change_address() -> Result<(), anyhow::Error> {
     let config = clean_and_load_config("config/regtest.yaml")?;
 
     let bitcoind = Bitcoind::new(
-        "bitcoin-regtest",
-        "bitcoin/bitcoin:29.1",
+        BitcoindConfig::default(),
         config.bitcoin.clone(),
+        None
     );
     bitcoind.start()?;
 
@@ -730,9 +731,9 @@ fn test_bdk_wallet_build_tx() -> Result<(), anyhow::Error> {
     let config = clean_and_load_config("config/regtest.yaml")?;
 
     let bitcoind = Bitcoind::new(
-        "bitcoin-regtest",
-        "bitcoin/bitcoin:29.1",
+        BitcoindConfig::default(),
         config.bitcoin.clone(),
+        None
     );
     bitcoind.start()?;
 
@@ -826,9 +827,9 @@ fn test_regtest_wallet() -> Result<(), anyhow::Error> {
     )?);
 
     let bitcoind = Bitcoind::new(
-        "bitcoin-regtest",
-        "bitcoin/bitcoin:29.1",
+        BitcoindConfig::default(),
         config.bitcoin.clone(),
+        None
     );
     bitcoind.start()?;
 
@@ -904,9 +905,9 @@ fn test_send_funds() -> Result<(), anyhow::Error> {
     )?);
 
     let bitcoind = Bitcoind::new(
-        "bitcoin-regtest",
-        "bitcoin/bitcoin:29.1",
+        BitcoindConfig::default(),
         config.bitcoin.clone(),
+        None
     );
     bitcoind.start()?;
 

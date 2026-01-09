@@ -672,6 +672,7 @@ mod tests {
 
         let bitcoind = Bitcoind::new(
             bitcoind_config,
+            config.bitcoin.clone(),
             None
         );
 
@@ -835,6 +836,7 @@ mod tests {
 
         let bitcoind = Bitcoind::new(
             bitcoind_config,
+            config.bitcoin.clone(),
             None
         );
 
@@ -1232,6 +1234,7 @@ mod tests {
 
         let bitcoind = Bitcoind::new(
             bitcoind_config,
+            config.bitcoin.clone(),
             None
         );
 

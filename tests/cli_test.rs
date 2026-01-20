@@ -2,7 +2,7 @@
 mod helper;
 use crate::helper::{clean_and_load_config, clear_db};
 use assert_cmd::{cargo::cargo_bin, Command};
-use bitcoind::bitcoind::Bitcoind;
+use bitcoind::{bitcoind::Bitcoind, config::BitcoindConfig};
 use predicates::prelude::*;
 
 fn get_cmd() -> Command {
@@ -48,9 +48,9 @@ fn test_create_wallet() -> Result<(), anyhow::Error> {
     let config = clean_and_load_config("config/regtest.yaml")?;
 
     let bitcoind = Bitcoind::new(
-        "bitcoin-regtest",
-        "bitcoin/bitcoin:29.1",
+        BitcoindConfig::default(),
         config.bitcoin.clone(),
+        None
     );
     bitcoind.start()?;
 

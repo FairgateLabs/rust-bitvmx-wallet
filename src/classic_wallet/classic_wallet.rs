@@ -595,7 +595,7 @@ mod tests {
         secp256k1::{self, SecretKey},
         Network,
     };
-    use bitcoind::bitcoind::Bitcoind;
+    use bitcoind::{bitcoind::Bitcoind, config::BitcoindConfig};
     use std::{path::Path, str::FromStr, sync::Once};
     use tracing::info;
     use tracing_subscriber::EnvFilter;
@@ -668,11 +668,12 @@ mod tests {
     #[ignore]
     fn test_fund_address() -> Result<(), anyhow::Error> {
         let config = clean_and_load_config("config/regtest.yaml")?;
+        let bitcoind_config = BitcoindConfig::default();
 
         let bitcoind = Bitcoind::new(
-            "bitcoin-regtest",
-            "bitcoin/bitcoin:29.1",
+            bitcoind_config,
             config.bitcoin.clone(),
+            None
         );
 
         bitcoind.start()?;
@@ -831,10 +832,12 @@ mod tests {
     fn test_use_private_musig_to_fund_address() {
         let config = clean_and_load_config("config/regtest.yaml").unwrap();
 
+        let bitcoind_config = BitcoindConfig::default();
+
         let bitcoind = Bitcoind::new(
-            "bitcoin-regtest",
-            "bitcoin/bitcoin:29.1",
+            bitcoind_config,
             config.bitcoin.clone(),
+            None
         );
 
         bitcoind.start().unwrap();
@@ -1227,10 +1230,12 @@ mod tests {
     fn test_merge_utxos() {
         let config = clean_and_load_config("config/regtest.yaml").unwrap();
 
+        let bitcoind_config = BitcoindConfig::default();
+
         let bitcoind = Bitcoind::new(
-            "bitcoin-regtest",
-            "bitcoin/bitcoin:29.1",
+            bitcoind_config,
             config.bitcoin.clone(),
+            None
         );
 
         bitcoind.start().unwrap();

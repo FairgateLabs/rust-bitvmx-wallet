@@ -13,8 +13,10 @@ key_storage:
   path: /tmp/testnet/wallet/keys.db
 
 storage:
+  # Stores wallet metadata used by WalletManager (names, pubkeys, indexes).
   path: /tmp/testnet/wallet/storage.db
 
 wallet:
+  # Base path for BDK wallet database files
   db_path: /tmp/testnet/wallet/wallet.db
   start_height: 4734673

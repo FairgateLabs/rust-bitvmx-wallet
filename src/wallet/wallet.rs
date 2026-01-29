@@ -88,6 +88,7 @@ use std::{
     time::Instant,
 };
 
+pub const MAX_FEE_RATE_SAT_VB: u64 = 200;
 /// A Bitcoin wallet instance with full functionality.
 ///
 /// The `Wallet` struct provides comprehensive Bitcoin wallet functionality,
@@ -864,13 +865,15 @@ impl Wallet {
     /// # }
     /// ```
     #[allow(deprecated)] // TODO: Remove this once the deprecated methods are removed from the BDK wallet
-    fn send_to_address_tx(
+    fn send_to_address_tx_unchecked(
         &mut self,
         to_addresses: Vec<&str>,
         amounts: Vec<u64>,
         fee_rate: Option<u64>,
+        check: bool,
     ) -> Result<Transaction, WalletError> {
         // See https://docs.rs/bdk_wallet/latest/bdk_wallet/struct.TxBuilder.html
+
         let mut psbt = {
             let mut builder = self.bdk_wallet.build_tx();
             builder
@@ -883,6 +886,12 @@ impl Wallet {
                 builder.add_recipient(to_address.script_pubkey(), Amount::from_sat(*amount));
             }
             if let Some(fee_rate) = fee_rate {
+                if fee_rate > MAX_FEE_RATE_SAT_VB && check {
+                    return Err(WalletError::FeeRateTooHigh {
+                        provided: fee_rate,
+                        max: MAX_FEE_RATE_SAT_VB,
+                    });
+                }
                 builder.fee_rate(FeeRate::from_sat_per_vb(fee_rate).expect("valid feerate"));
             }
             builder.finish()? //Returns a PartialSignedBitcoinTransaction https://docs.rs/bitcoin/0.32.6/bitcoin/psbt/struct.Psbt.html
@@ -1013,27 +1022,50 @@ impl Wallet {
         destination: Destination,
         fee_rate: Option<u64>,
     ) -> Result<Transaction, WalletError> {
+        self.create_tx_unchecked(destination, fee_rate, true)
+    }
+
+    pub fn create_tx_unchecked(
+        &mut self,
+        destination: Destination,
+        fee_rate: Option<u64>,
+        check: bool,
+    ) -> Result<Transaction, WalletError> {
         match destination {
-            Destination::Address(address, amount) => {
-                self.send_to_address_tx(vec![address.as_str()], vec![amount], fee_rate)
-            }
+            Destination::Address(address, amount) => self.send_to_address_tx_unchecked(
+                vec![address.as_str()],
+                vec![amount],
+                fee_rate,
+                check,
+            ),
             Destination::P2WPKH(pubkey, amount) => {
                 let address = pub_key_to_p2wpkh(&pubkey, self.network)?;
-                self.send_to_address_tx(vec![address.to_string().as_str()], vec![amount], fee_rate)
+                self.send_to_address_tx_unchecked(
+                    vec![address.to_string().as_str()],
+                    vec![amount],
+                    fee_rate,
+                    check,
+                )
             }
             Destination::Batch(batch) => {
                 let (addresses, amounts): (Vec<String>, Vec<u64>) =
                     Wallet::process_batch(batch, self.network)?;
 
-                self.send_to_address_tx(
+                self.send_to_address_tx_unchecked(
                     addresses.iter().map(|address| address.as_str()).collect(),
                     amounts,
                     fee_rate,
+                    check,
                 )
             }
             Destination::P2TR(x_public_key, tap_leaves, amount) => {
                 let address = pub_key_to_p2tr(&x_public_key, &tap_leaves, self.network)?;
-                self.send_to_address_tx(vec![address.to_string().as_str()], vec![amount], fee_rate)
+                self.send_to_address_tx_unchecked(
+                    vec![address.to_string().as_str()],
+                    vec![amount],
+                    fee_rate,
+                    check,
+                )
             }
         }
     }
@@ -1116,7 +1148,16 @@ impl Wallet {
         destination: Destination,
         fee_rate: Option<u64>,
     ) -> Result<Transaction, WalletError> {
-        let tx = self.create_tx(destination, fee_rate)?;
+        self.send_funds_unchecked(destination, fee_rate, true)
+    }
+
+    pub fn send_funds_unchecked(
+        &mut self,
+        destination: Destination,
+        fee_rate: Option<u64>,
+        checked: bool,
+    ) -> Result<Transaction, WalletError> {
+        let tx = self.create_tx_unchecked(destination, fee_rate, checked)?;
         // Broadcast the transaction and update the wallet with the unconfirmed transaction
         info!(
             "send_funds: Broadcasting transaction: {}",

@@ -29,6 +29,7 @@
 use bitcoin::Txid;
 use bitvmx_wallet::wallet::cli::{Cli, Commands};
 use bitvmx_wallet::wallet::config::Config;
+use bitvmx_wallet::wallet::errors::WalletError;
 use bitvmx_wallet::wallet::wallet_manager::WalletManager;
 use bitvmx_wallet::{Destination, RegtestWallet, Wallet};
 use clap::Parser;
@@ -129,6 +130,7 @@ fn main() {
             to_address,
             amount,
             fee_rate,
+            ignore_fee_rate,
         } => {
             let mut wallet = wallet_manager.load_wallet(identifier).unwrap();
             match wallet.sync_wallet() {
@@ -138,11 +140,39 @@ fn main() {
                     process::exit(1);
                 }
             }
-            match wallet.send_funds(
+            match wallet.send_funds_with_options(
                 Destination::Address(to_address.to_string(), *amount),
                 *fee_rate,
+                !ignore_fee_rate,
             ) {
                 Ok(tx) => println!("Sent to address, txid: {}", tx.compute_txid()),
+                Err(WalletError::FeeRateTooHigh { provided, max }) => {
+                    eprintln!(
+                        "Warning: fee rate {} sat/vB exceeds recommended maximum ({} sat/vB)",
+                        provided, max
+                    );
+
+                    eprint!("Do you want to proceed anyway? [y/N]: ");
+                    use std::io::{self, Write};
+                    io::stdout().flush().unwrap();
+
+                    let mut input = String::new();
+                    io::stdin().read_line(&mut input).unwrap();
+
+                    if input.trim().eq_ignore_ascii_case("y") {
+                        // Retry, but bypass the check
+                        match wallet.send_funds_with_options(
+                            Destination::Address(to_address.to_string(), *amount),
+                            Some(provided),
+                            false,
+                        ) {
+                            Ok(tx) => println!("Sent to address, txid: {}", tx.compute_txid()),
+                            Err(e) => eprintln!("Error sending transaction: {e}"),
+                        }
+                    } else {
+                        eprintln!("Transaction aborted by user");
+                    }
+                }
                 Err(e) => eprintln!(
                     "Error sending to address {to_address} with amount {amount} satoshis: {e}"
                 ),

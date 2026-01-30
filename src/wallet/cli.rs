@@ -80,6 +80,7 @@ pub enum Commands {
     /// * `to_address` - Destination Bitcoin address
     /// * `amount` - Amount to send in satoshis
     /// * `fee_rate` - Optional fee rate in satoshis per virtual byte
+    /// * `ignore_fee_rate` - Ignore max fee rate safeguard and skip interactive confirmation
     SendToAddress {
         /// Wallet identifier
         identifier: String,
@@ -89,6 +90,9 @@ pub enum Commands {
         amount: u64,
         /// Optional fee rate in satoshis per virtual byte
         fee_rate: Option<u64>,
+        /// Ignore max fee rate safeguard and skip interactive confirmation
+        #[arg(long)]
+        ignore_fee_rate: bool,
     },
 
     /// Synchronize a wallet with the Bitcoin network.

@@ -194,4 +194,7 @@ pub enum WalletError {
     /// Occurs when the parsing URL.
     #[error("Invalid URL: {0}. Error: {1}")]
     URLError(String, String),
+
+    #[error("Provided fee rate {provided} sat/vB is higher than the maximum allowed fee rate {max} sat/vB")]
+    FeeRateTooHigh { provided: u64, max: u64 },
 }

@@ -8,6 +8,8 @@ use key_manager::config::KeyManagerConfig;
 use serde::{self, Deserialize};
 use storage_backend::storage_config::StorageConfig;
 
+pub const MAX_FEE_RATE_SAT_VB: u64 = 200;
+
 /// Configuration for wallet-specific settings.
 ///
 /// This struct contains all the configuration parameters needed to initialize

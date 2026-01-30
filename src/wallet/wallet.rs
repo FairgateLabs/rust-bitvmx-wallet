@@ -50,6 +50,7 @@
 //! }
 //! ```
 
+use crate::wallet::config::MAX_FEE_RATE_SAT_VB;
 use crate::wallet::types::{Destination, Emission};
 use crate::wallet::utils::{
     self, p2tr_descriptor, p2wpkh_descriptor, pub_key_to_p2tr, pub_key_to_p2wpkh,
@@ -869,8 +870,10 @@ impl Wallet {
         to_addresses: Vec<&str>,
         amounts: Vec<u64>,
         fee_rate: Option<u64>,
+        check: bool,
     ) -> Result<Transaction, WalletError> {
         // See https://docs.rs/bdk_wallet/latest/bdk_wallet/struct.TxBuilder.html
+
         let mut psbt = {
             let mut builder = self.bdk_wallet.build_tx();
             builder
@@ -883,6 +886,12 @@ impl Wallet {
                 builder.add_recipient(to_address.script_pubkey(), Amount::from_sat(*amount));
             }
             if let Some(fee_rate) = fee_rate {
+                if fee_rate > MAX_FEE_RATE_SAT_VB && check {
+                    return Err(WalletError::FeeRateTooHigh {
+                        provided: fee_rate,
+                        max: MAX_FEE_RATE_SAT_VB,
+                    });
+                }
                 builder.fee_rate(FeeRate::from_sat_per_vb(fee_rate).expect("valid feerate"));
             }
             builder.finish()? //Returns a PartialSignedBitcoinTransaction https://docs.rs/bitcoin/0.32.6/bitcoin/psbt/struct.Psbt.html
@@ -1013,13 +1022,27 @@ impl Wallet {
         destination: Destination,
         fee_rate: Option<u64>,
     ) -> Result<Transaction, WalletError> {
+        self.create_tx_internal(destination, fee_rate, true)
+    }
+
+    fn create_tx_internal(
+        &mut self,
+        destination: Destination,
+        fee_rate: Option<u64>,
+        check: bool,
+    ) -> Result<Transaction, WalletError> {
         match destination {
             Destination::Address(address, amount) => {
-                self.send_to_address_tx(vec![address.as_str()], vec![amount], fee_rate)
+                self.send_to_address_tx(vec![address.as_str()], vec![amount], fee_rate, check)
             }
             Destination::P2WPKH(pubkey, amount) => {
                 let address = pub_key_to_p2wpkh(&pubkey, self.network)?;
-                self.send_to_address_tx(vec![address.to_string().as_str()], vec![amount], fee_rate)
+                self.send_to_address_tx(
+                    vec![address.to_string().as_str()],
+                    vec![amount],
+                    fee_rate,
+                    check,
+                )
             }
             Destination::Batch(batch) => {
                 let (addresses, amounts): (Vec<String>, Vec<u64>) =
@@ -1029,11 +1052,17 @@ impl Wallet {
                     addresses.iter().map(|address| address.as_str()).collect(),
                     amounts,
                     fee_rate,
+                    check,
                 )
             }
             Destination::P2TR(x_public_key, tap_leaves, amount) => {
                 let address = pub_key_to_p2tr(&x_public_key, &tap_leaves, self.network)?;
-                self.send_to_address_tx(vec![address.to_string().as_str()], vec![amount], fee_rate)
+                self.send_to_address_tx(
+                    vec![address.to_string().as_str()],
+                    vec![amount],
+                    fee_rate,
+                    check,
+                )
             }
         }
     }
@@ -1116,7 +1145,16 @@ impl Wallet {
         destination: Destination,
         fee_rate: Option<u64>,
     ) -> Result<Transaction, WalletError> {
-        let tx = self.create_tx(destination, fee_rate)?;
+        self.send_funds_with_options(destination, fee_rate, true)
+    }
+
+    pub fn send_funds_with_options(
+        &mut self,
+        destination: Destination,
+        fee_rate: Option<u64>,
+        checked: bool,
+    ) -> Result<Transaction, WalletError> {
+        let tx = self.create_tx_internal(destination, fee_rate, checked)?;
         // Broadcast the transaction and update the wallet with the unconfirmed transaction
         info!(
             "send_funds: Broadcasting transaction: {}",

@@ -13,9 +13,11 @@ key_storage:
   path: /tmp/regtest/wallet/keys.db
 
 storage:
+  # Stores wallet metadata used by WalletManager (names, pubkeys, indexes).
   path: /tmp/regtest/wallet/storage.db
 
 wallet:
+  # Base path for BDK wallet database files
   db_path: /tmp/regtest/wallet/wallet.db
   # optional start block to sync the wallet, default is 0
   start_height: 0

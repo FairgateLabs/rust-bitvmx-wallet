@@ -130,6 +130,7 @@ fn main() {
             to_address,
             amount,
             fee_rate,
+            ignore_fee_rate,
         } => {
             let mut wallet = wallet_manager.load_wallet(identifier).unwrap();
             match wallet.sync_wallet() {
@@ -139,9 +140,10 @@ fn main() {
                     process::exit(1);
                 }
             }
-            match wallet.send_funds(
+            match wallet.send_funds_with_options(
                 Destination::Address(to_address.to_string(), *amount),
                 *fee_rate,
+                !ignore_fee_rate,
             ) {
                 Ok(tx) => println!("Sent to address, txid: {}", tx.compute_txid()),
                 Err(WalletError::FeeRateTooHigh { provided, max }) => {
@@ -159,7 +161,7 @@ fn main() {
 
                     if input.trim().eq_ignore_ascii_case("y") {
                         // Retry, but bypass the check
-                        match wallet.send_funds_unchecked(
+                        match wallet.send_funds_with_options(
                             Destination::Address(to_address.to_string(), *amount),
                             Some(provided),
                             false,

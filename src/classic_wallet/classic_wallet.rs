@@ -306,7 +306,7 @@ impl ClassicWallet {
         let mut protocol = Protocol::new("merge_utxos");
         for (i, (_, (origin_pubkey, outpoint, origin_amount))) in funding_data.iter().enumerate() {
             info!("Public key: {origin_pubkey}");
-            let external_output = OutputType::segwit_key((*origin_amount).into(), &origin_pubkey)?;
+            let external_output = OutputType::segwit_key(*origin_amount, &origin_pubkey)?;
             info!("External output: {:?}", external_output);
 
             let transaction_name = format!("origin{i}");
@@ -324,7 +324,7 @@ impl ClassicWallet {
         }
 
         info!("Amount: {total_amount}");
-        let transfer_output = OutputType::segwit_key((total_amount - fee).into(), &to_pubkey)?;
+        let transfer_output = OutputType::segwit_key(total_amount - fee, &to_pubkey)?;
         protocol.add_transaction_output("merge", &transfer_output)?;
         protocol.build_and_sign(&self.key_manager, "id")?;
         let mut spending_args_vec = Vec::new();
@@ -461,7 +461,7 @@ impl ClassicWallet {
         }
 
         info!("Public key: {origin_pubkey}");
-        let external_output = OutputType::segwit_key(origin_amount.into(), &origin_pubkey)?;
+        let external_output = OutputType::segwit_key(origin_amount, &origin_pubkey)?;
         info!("External output: {:?}", external_output);
 
         let mut protocol = Protocol::new("transfer_tx");
@@ -484,14 +484,14 @@ impl ClassicWallet {
                     if spending_scripts.len() != amount.len() {
                         return Err(ClassicWalletError::InvalidSpendingScripts);
                     }
-                    OutputType::taproot((*value).into(), &to_pubkey, &spending_scripts[i])?
+                    OutputType::taproot(*value, &to_pubkey, &spending_scripts[i])?
                 } else {
                     let sig_check =
                         scripts::check_aggregated_signature(&to_pubkey, SignMode::Aggregate);
-                    OutputType::taproot((*value).into(), &to_pubkey, &[sig_check])?
+                    OutputType::taproot(*value, &to_pubkey, &[sig_check])?
                 }
             } else {
-                OutputType::segwit_key((*value).into(), &to_pubkey)?
+                OutputType::segwit_key(*value, &to_pubkey)?
             };
 
             protocol.add_transaction_output("transfer", &transfer_output)?;
@@ -500,7 +500,7 @@ impl ClassicWallet {
         let change = origin_amount - total_amount_to_transfer - fee;
 
         if change > 0 {
-            let change_output = OutputType::segwit_key(change.into(), &origin_pubkey)?;
+            let change_output = OutputType::segwit_key(change, &origin_pubkey)?;
             protocol.add_transaction_output("transfer", &change_output)?;
         }
 

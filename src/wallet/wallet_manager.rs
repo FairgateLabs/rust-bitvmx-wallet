@@ -573,7 +573,7 @@ impl WalletManager {
         info!("Clearing db at {}", config_wallet.db_path);
         Wallet::clear_db(&config_wallet)?;
 
-        self.store.delete(&key)?;
+        self.store.remove(&key, None)?;
 
         Ok(())
     }

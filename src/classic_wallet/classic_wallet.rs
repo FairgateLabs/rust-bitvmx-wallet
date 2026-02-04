@@ -224,7 +224,7 @@ impl ClassicWallet {
             ));
         }
 
-        self.store.delete(&key)?;
+        self.store.remove(&key, None)?;
 
         Ok(())
     }
@@ -411,7 +411,7 @@ impl ClassicWallet {
         let key =
             StoreKey::PendingTransfer(identifier.to_string(), funding_id.to_string()).get_key();
         if let Some((txid, vout, change)) = self.store.get(&key)? {
-            self.store.delete(&key)?;
+            self.store.remove(&key, None)?;
             self.remove_funding(identifier, funding_id)?;
             if change > 0 {
                 let outpoint = OutPoint::new(txid, vout);
@@ -435,7 +435,7 @@ impl ClassicWallet {
             return Err(ClassicWalletError::KeyNotFound(key));
         }
 
-        self.store.delete(&key)?;
+        self.store.remove(&key, None)?;
 
         Ok(())
     }
@@ -670,11 +670,7 @@ mod tests {
         let config = clean_and_load_config("config/regtest.yaml")?;
         let bitcoind_config = BitcoindConfig::default();
 
-        let bitcoind = Bitcoind::new(
-            bitcoind_config,
-            config.bitcoin.clone(),
-            None
-        );
+        let bitcoind = Bitcoind::new(bitcoind_config, config.bitcoin.clone(), None);
 
         bitcoind.start()?;
 
@@ -834,11 +830,7 @@ mod tests {
 
         let bitcoind_config = BitcoindConfig::default();
 
-        let bitcoind = Bitcoind::new(
-            bitcoind_config,
-            config.bitcoin.clone(),
-            None
-        );
+        let bitcoind = Bitcoind::new(bitcoind_config, config.bitcoin.clone(), None);
 
         bitcoind.start().unwrap();
 
@@ -1232,11 +1224,7 @@ mod tests {
 
         let bitcoind_config = BitcoindConfig::default();
 
-        let bitcoind = Bitcoind::new(
-            bitcoind_config,
-            config.bitcoin.clone(),
-            None
-        );
+        let bitcoind = Bitcoind::new(bitcoind_config, config.bitcoin.clone(), None);
 
         bitcoind.start().unwrap();
 

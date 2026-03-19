@@ -1,15 +1,15 @@
 [package]
 name = "bitvmx-wallet"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 readme = "README.md"
 
 [dependencies]
-bitvmx-protocol-builder = { git = "https://github.com/FairgateLabs/rust-bitvmx-protocol-builder.git", tag = "v0.6.0" }
-rust-bitvmx-storage-backend = { git = "https://github.com/FairgateLabs/rust-bitvmx-storage-backend.git", tag = "v0.6.0" }
-bitvmx-bitcoin-rpc = { git = "https://github.com/FairgateLabs/rust-bitvmx-bitcoin-rpc.git", tag = "v0.6.0" }
-bitvmx-key-manager = { git = "https://github.com/FairgateLabs/rust-bitvmx-key-manager.git", tag = "v0.6.0" }
-bitvmx-settings = { git = "https://github.com/FairgateLabs/rust-bitvmx-settings.git", tag = "v0.6.0" }
+bitvmx-protocol-builder = { git = "https://github.com/FairgateLabs/rust-bitvmx-protocol-builder.git", tag = "v0.6.1" }
+rust-bitvmx-storage-backend = { git = "https://github.com/FairgateLabs/rust-bitvmx-storage-backend.git", tag = "v0.6.1" }
+bitvmx-bitcoin-rpc = { git = "https://github.com/FairgateLabs/rust-bitvmx-bitcoin-rpc.git", tag = "v0.6.1" }
+bitvmx-key-manager = { git = "https://github.com/FairgateLabs/rust-bitvmx-key-manager.git", tag = "v0.6.1" }
+bitvmx-settings = { git = "https://github.com/FairgateLabs/rust-bitvmx-settings.git", tag = "v0.6.1" }
 thiserror = "2.0.12"
 bitcoin = { version = "0.32.6", features = ["std", "rand-std"] }
 tracing = "0.1.41"
@@ -22,7 +22,7 @@ bdk_bitcoind_rpc = "0.22.0"
 ctrlc = "3.3.0"
 
 [dev-dependencies]
-bitcoind = { git = "https://github.com/FairgateLabs/rust-bitcoind.git", tag = "v0.6.0" }
+bitcoind = { git = "https://github.com/FairgateLabs/rust-bitcoind.git", tag = "v0.6.1" }
 assert_cmd = "2.0"
 predicates = "3.1"
 redact = { version = "0.1", features = ["serde", "zeroize"] }

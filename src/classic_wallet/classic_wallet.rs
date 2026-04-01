@@ -98,7 +98,7 @@ impl ClassicWallet {
 
         let key = StoreKey::ClassicWallet(identifier.to_string()).get_key();
 
-        if self.store.has_key(&key)? {
+        if self.store.has_key(&key, None)? {
             return Err(ClassicWalletError::KeyAlreadyExists(identifier.to_string()));
         }
 
@@ -112,7 +112,7 @@ impl ClassicWallet {
 
     pub fn get_wallet_index(&self) -> Result<u32, ClassicWalletError> {
         let key_index = StoreKey::CreateWalletIndex.get_key();
-        let index = self.store.get(&key_index)?.unwrap_or(0);
+        let index = self.store.get(&key_index, None)?.unwrap_or(0);
         // Increment the index to save for next wallet
         self.store.set(key_index, index + 1, None)?;
         Ok(index)
@@ -125,7 +125,7 @@ impl ClassicWallet {
     ) -> Result<(), ClassicWalletError> {
         let key = StoreKey::ClassicWallet(identifier.to_string()).get_key();
 
-        if self.store.has_key(&key)? {
+        if self.store.has_key(&key, None)? {
             return Err(ClassicWalletError::KeyAlreadyExists(identifier.to_string()));
         }
 
@@ -148,7 +148,7 @@ impl ClassicWallet {
         let key = StoreKey::ClassicWallet(identifier.to_string()).get_key();
         let pubkey: PublicKey = self
             .store
-            .get(&key)?
+            .get(&key, None)?
             .ok_or(ClassicWalletError::KeyNotFound(key))?;
         let secret_key = self.key_manager.export_secret(&pubkey)?;
         Ok((pubkey, secret_key))
@@ -168,7 +168,7 @@ impl ClassicWallet {
         }
         let key = StoreKey::Funding(identifier.to_string(), funding_id.to_string()).get_key();
 
-        if self.store.has_key(&key)? {
+        if self.store.has_key(&key, None)? {
             return Err(ClassicWalletError::KeyAlreadyExists(key));
         }
 
@@ -201,7 +201,7 @@ impl ClassicWallet {
 
         let key = StoreKey::ClassicWallet(identifier.to_string()).get_key();
 
-        if self.store.has_key(&key)? {
+        if self.store.has_key(&key, None)? {
             return Err(ClassicWalletError::KeyAlreadyExists(identifier.to_string()));
         }
 
@@ -217,14 +217,14 @@ impl ClassicWallet {
     ) -> Result<(), ClassicWalletError> {
         let key = StoreKey::Funding(identifier.to_string(), funding_id.to_string()).get_key();
 
-        if !self.store.has_key(&key)? {
+        if !self.store.has_key(&key, None)? {
             return Err(ClassicWalletError::FundingNotFound(
                 identifier.to_string(),
                 funding_id.to_string(),
             ));
         }
 
-        self.store.remove(&key, None)?;
+        self.store.remove(key, None)?;
 
         Ok(())
     }
@@ -243,21 +243,21 @@ impl ClassicWallet {
                 let key = StoreKey::PendingTransfer(identifier.to_string(), funding_id.to_string())
                     .get_key();
 
-                if self.store.has_key(&key)? {
+                if self.store.has_key(&key, None)? {
                     return Err(ClassicWalletError::TransferInProgress(key));
                 }
 
                 let key = StoreKey::ClassicWallet(identifier.to_string()).get_key();
                 let origin_pubkey: PublicKey = self
                     .store
-                    .get(&key)?
+                    .get(&key, None)?
                     .ok_or(ClassicWalletError::KeyNotFound(identifier.to_string()))?;
 
                 let key_funding =
                     StoreKey::Funding(identifier.to_string(), funding_id.to_string()).get_key();
                 let (outpoint, origin_amount): (OutPoint, u64) = self
                     .store
-                    .get(&key_funding)?
+                    .get(&key_funding, None)?
                     .ok_or(ClassicWalletError::FundingNotFound(
                         identifier.to_string(),
                         funding_id.to_string(),
@@ -358,7 +358,7 @@ impl ClassicWallet {
         let pending_key =
             StoreKey::PendingTransfer(identifier.to_string(), funding_id.to_string()).get_key();
 
-        if self.store.has_key(&pending_key)? {
+        if self.store.has_key(&pending_key, None)? {
             return Err(ClassicWalletError::TransferInProgress(pending_key));
         }
 
@@ -367,14 +367,14 @@ impl ClassicWallet {
         let key = StoreKey::ClassicWallet(identifier.to_string()).get_key();
         let origin_pub_key: PublicKey = self
             .store
-            .get(&key)?
+            .get(&key, None)?
             .ok_or(ClassicWalletError::KeyNotFound(identifier.to_string()))?;
 
         let key_funding =
             StoreKey::Funding(identifier.to_string(), funding_id.to_string()).get_key();
         let (outpoint, origin_amount): (OutPoint, u64) =
             self.store
-                .get(&key_funding)?
+                .get(&key_funding, None)?
                 .ok_or(ClassicWalletError::FundingNotFound(
                     identifier.to_string(),
                     funding_id.to_string(),
@@ -410,8 +410,8 @@ impl ClassicWallet {
     ) -> Result<(), ClassicWalletError> {
         let key =
             StoreKey::PendingTransfer(identifier.to_string(), funding_id.to_string()).get_key();
-        if let Some((txid, vout, change)) = self.store.get(&key)? {
-            self.store.remove(&key, None)?;
+        if let Some((txid, vout, change)) = self.store.get(&key, None)? {
+            self.store.remove(key, None)?;
             self.remove_funding(identifier, funding_id)?;
             if change > 0 {
                 let outpoint = OutPoint::new(txid, vout);
@@ -431,11 +431,11 @@ impl ClassicWallet {
         let key =
             StoreKey::PendingTransfer(identifier.to_string(), funding_id.to_string()).get_key();
 
-        if !self.store.has_key(&key)? {
+        if !self.store.has_key(&key, None)? {
             return Err(ClassicWalletError::KeyNotFound(key));
         }
 
-        self.store.remove(&key, None)?;
+        self.store.remove(key, None)?;
 
         Ok(())
     }
@@ -539,7 +539,7 @@ impl ClassicWallet {
             let key = StoreKey::ClassicWallet(identifier.to_string()).get_key();
             let origin_pub_key: PublicKey = self
                 .store
-                .get(&key)?
+                .get(&key, None)?
                 .ok_or(ClassicWalletError::KeyNotFound(identifier.to_string()))?;
             let address = bitcoin_client.get_new_address(origin_pub_key, self.network)?;
             let (tx, vout) = bitcoin_client.fund_address(&address, Amount::from_sat(amount))?;
@@ -555,8 +555,8 @@ impl ClassicWallet {
     ) -> Result<Vec<(String, OutPoint, u64)>, ClassicWalletError> {
         let key = StoreKey::Funding(identifier.to_string(), String::new()).get_key();
         let mut funds = Vec::new();
-        for identifier_key in self.store.partial_compare_keys(&key)? {
-            if let Some((outpoint, value)) = self.store.get(&identifier_key)? {
+        for identifier_key in self.store.partial_compare_keys(&key, None)? {
+            if let Some((outpoint, value)) = self.store.get(&identifier_key, None)? {
                 funds.push((
                     identifier_key.strip_prefix(&key).unwrap().to_string(),
                     outpoint,
@@ -571,11 +571,11 @@ impl ClassicWallet {
         let key = StoreKey::ClassicWallet(String::new()).get_key();
         let mut wallets = Vec::new();
 
-        for identifier_key in self.store.partial_compare_keys(&key)? {
+        for identifier_key in self.store.partial_compare_keys(&key, None)? {
             let identifier = identifier_key.strip_prefix(&key).unwrap().to_string();
             let pubkey: PublicKey = self
                 .store
-                .get(&identifier_key)?
+                .get(&identifier_key, None)?
                 .ok_or(ClassicWalletError::KeyNotFound(identifier_key))?;
 
             wallets.push((identifier, pubkey));
@@ -670,7 +670,11 @@ mod tests {
         let config = clean_and_load_config("config/regtest.yaml")?;
         let bitcoind_config = BitcoindConfig::default();
 
-        let bitcoind = Bitcoind::new(bitcoind_config, config.bitcoin.clone(), None);
+        let bitcoind = Bitcoind::new(
+            bitcoind_config,
+            config.bitcoin.clone(),
+            None
+        );
 
         bitcoind.start()?;
 
@@ -830,7 +834,11 @@ mod tests {
 
         let bitcoind_config = BitcoindConfig::default();
 
-        let bitcoind = Bitcoind::new(bitcoind_config, config.bitcoin.clone(), None);
+        let bitcoind = Bitcoind::new(
+            bitcoind_config,
+            config.bitcoin.clone(),
+            None
+        );
 
         bitcoind.start().unwrap();
 
@@ -1224,7 +1232,11 @@ mod tests {
 
         let bitcoind_config = BitcoindConfig::default();
 
-        let bitcoind = Bitcoind::new(bitcoind_config, config.bitcoin.clone(), None);
+        let bitcoind = Bitcoind::new(
+            bitcoind_config,
+            config.bitcoin.clone(),
+            None
+        );
 
         bitcoind.start().unwrap();
 

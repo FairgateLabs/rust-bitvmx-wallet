@@ -77,6 +77,8 @@ pub enum Commands {
     BtcToSat { btc: f64 },
     /// List wallets
     ListWallets,
+    /// Start the interactive terminal UI
+    Ui,
     /// Import partial private keys to create a wallet from the aggregated private key
     ImportPartialPrivateKeys {
         identifier: String,

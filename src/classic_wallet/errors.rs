@@ -41,4 +41,7 @@ pub enum ClassicWalletError {
 
     #[error("Invalid partial private keys")]
     InvalidPartialPrivateKeys,
+
+    #[error("Terminal I/O error: {0}")]
+    IoError(#[from] std::io::Error),
 }

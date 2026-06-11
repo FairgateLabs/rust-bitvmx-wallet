@@ -2,6 +2,7 @@ pub mod classic_wallet;
 mod cli;
 pub mod config;
 pub mod errors;
+mod tui;
 
 use clap::Parser;
 use classic_wallet::ClassicWallet;
@@ -176,6 +177,10 @@ fn main() {
                 println!("- Pubkey: {pubkey}");
             }
         }
+        Commands::Ui => match tui::run(&wallet) {
+            Ok(_) => println!("Interactive UI closed"),
+            Err(e) => eprintln!("Error: {e}"),
+        },
         Commands::ImportPartialPrivateKeys {
             identifier,
             private_keys,

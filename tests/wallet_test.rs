@@ -76,11 +76,7 @@ fn test_bdk_wallet_sync_wallet() -> Result<(), anyhow::Error> {
 
     // Test successfull sync
     // Start a Bitcoin node
-    let bitcoind = Bitcoind::new(
-        BitcoindConfig::default(),
-        config.bitcoin.clone(),
-        None
-    );
+    let bitcoind = Bitcoind::new(BitcoindConfig::default(), config.bitcoin.clone(), None);
     bitcoind.start()?;
 
     // Create a wallet with correct config and sync it
@@ -155,11 +151,7 @@ fn test_bdk_wallet_sync_wallet() -> Result<(), anyhow::Error> {
 fn test_bdk_wallet() -> Result<(), anyhow::Error> {
     let config = clean_and_load_config("config/regtest.yaml")?;
 
-    let bitcoind = Bitcoind::new(
-        BitcoindConfig::default(),
-        config.bitcoin.clone(),
-        None
-    );
+    let bitcoind = Bitcoind::new(BitcoindConfig::default(), config.bitcoin.clone(), None);
     bitcoind.start()?;
 
     let private_key = "cVt4o7BGAig1UXywgGSmARhxMdzP5qvQsxKkSsc1XEkw3tDTQFpy";
@@ -231,11 +223,7 @@ fn test_bdk_wallet() -> Result<(), anyhow::Error> {
 fn test_bdk_wallet_load_different_wallet_same_db() -> Result<(), anyhow::Error> {
     let config = clean_and_load_config("config/regtest.yaml")?;
 
-    let bitcoind = Bitcoind::new(
-        BitcoindConfig::default(),
-        config.bitcoin.clone(),
-        None
-    );
+    let bitcoind = Bitcoind::new(BitcoindConfig::default(), config.bitcoin.clone(), None);
     bitcoind.start()?;
 
     // Create first wallet and fund it
@@ -336,11 +324,7 @@ fn test_bdk_wallet_load_different_wallet_same_db() -> Result<(), anyhow::Error> 
 fn test_bdk_wallet_balance() -> Result<(), anyhow::Error> {
     let config = clean_and_load_config("config/regtest.yaml")?;
 
-    let bitcoind = Bitcoind::new(
-        BitcoindConfig::default(),
-        config.bitcoin.clone(),
-        None
-    );
+    let bitcoind = Bitcoind::new(BitcoindConfig::default(), config.bitcoin.clone(), None);
     bitcoind.start()?;
 
     let private_key = "cVt4o7BGAig1UXywgGSmARhxMdzP5qvQsxKkSsc1XEkw3tDTQFpy";
@@ -613,11 +597,7 @@ fn test_bdk_wallet_balance() -> Result<(), anyhow::Error> {
 fn test_bdk_wallet_balance_with_change_address() -> Result<(), anyhow::Error> {
     let config = clean_and_load_config("config/regtest.yaml")?;
 
-    let bitcoind = Bitcoind::new(
-        BitcoindConfig::default(),
-        config.bitcoin.clone(),
-        None
-    );
+    let bitcoind = Bitcoind::new(BitcoindConfig::default(), config.bitcoin.clone(), None);
     bitcoind.start()?;
 
     let private_key = "cVt4o7BGAig1UXywgGSmARhxMdzP5qvQsxKkSsc1XEkw3tDTQFpy";
@@ -730,11 +710,7 @@ fn test_bdk_wallet_balance_with_change_address() -> Result<(), anyhow::Error> {
 fn test_bdk_wallet_build_tx() -> Result<(), anyhow::Error> {
     let config = clean_and_load_config("config/regtest.yaml")?;
 
-    let bitcoind = Bitcoind::new(
-        BitcoindConfig::default(),
-        config.bitcoin.clone(),
-        None
-    );
+    let bitcoind = Bitcoind::new(BitcoindConfig::default(), config.bitcoin.clone(), None);
     bitcoind.start()?;
 
     let private_key = "cVt4o7BGAig1UXywgGSmARhxMdzP5qvQsxKkSsc1XEkw3tDTQFpy";
@@ -826,11 +802,7 @@ fn test_regtest_wallet() -> Result<(), anyhow::Error> {
         &config.key_storage,
     )?);
 
-    let bitcoind = Bitcoind::new(
-        BitcoindConfig::default(),
-        config.bitcoin.clone(),
-        None
-    );
+    let bitcoind = Bitcoind::new(BitcoindConfig::default(), config.bitcoin.clone(), None);
     bitcoind.start()?;
 
     let mut wallet = Wallet::from_derive_keypair(
@@ -904,11 +876,7 @@ fn test_send_funds() -> Result<(), anyhow::Error> {
         &config.key_storage,
     )?);
 
-    let bitcoind = Bitcoind::new(
-        BitcoindConfig::default(),
-        config.bitcoin.clone(),
-        None
-    );
+    let bitcoind = Bitcoind::new(BitcoindConfig::default(), config.bitcoin.clone(), None);
     bitcoind.start()?;
 
     let mut wallet = Wallet::from_derive_keypair(

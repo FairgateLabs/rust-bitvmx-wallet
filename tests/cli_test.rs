@@ -47,11 +47,7 @@ fn test_create_wallet() -> Result<(), anyhow::Error> {
     clear_db("/tmp/wallet_manager".as_ref())?;
     let config = clean_and_load_config("config/regtest.yaml")?;
 
-    let bitcoind = Bitcoind::new(
-        BitcoindConfig::default(),
-        config.bitcoin.clone(),
-        None
-    );
+    let bitcoind = Bitcoind::new(BitcoindConfig::default(), config.bitcoin.clone(), None);
     bitcoind.start()?;
 
     let mut cmd = get_cmd();

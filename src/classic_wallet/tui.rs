@@ -26,6 +26,7 @@ enum View {
     CreateWallet,
     ImportWalletName,
     ImportWalletPrivateKey,
+    ConfirmDeleteWallet,
 }
 
 struct App {
@@ -41,7 +42,7 @@ struct App {
 impl App {
     fn new(wallet: &ClassicWallet) -> Self {
         let mut app = Self {
-            status: "Press ↑/↓ to select, Enter for details, c to create, i to import, q/Esc to quit"
+            status: "Press ↑/↓ to select, Enter for details, c to create, i to import, d to delete, q/Esc to quit"
                 .to_string(),
             wallets: Vec::new(),
             selected_wallet: 0,
@@ -170,6 +171,39 @@ impl App {
         self.status = "Enter wallet name for imported private key".to_string();
     }
 
+    fn start_delete_wallet(&mut self) {
+        let Some(wallet_name) = self.selected_wallet().map(|wallet| wallet.name.clone()) else {
+            self.status = "No wallet selected".to_string();
+            return;
+        };
+
+        self.view = View::ConfirmDeleteWallet;
+        self.status = format!("Delete wallet '{wallet_name}'? Press y to confirm or n to cancel");
+    }
+
+    fn cancel_delete_wallet(&mut self) {
+        self.view = View::WalletList;
+        self.status = "Delete cancelled".to_string();
+    }
+
+    fn delete_selected_wallet(&mut self, wallet: &ClassicWallet) {
+        let Some(selected_wallet) = self.selected_wallet() else {
+            self.view = View::WalletList;
+            self.status = "No wallet selected".to_string();
+            return;
+        };
+
+        let name = selected_wallet.name.clone();
+        match wallet.remove_wallet(&name) {
+            Ok(()) => {
+                self.view = View::WalletList;
+                self.status = format!("Deleted wallet {name}");
+                self.refresh_wallets(wallet);
+            }
+            Err(e) => self.status = format!("Failed to delete wallet: {e}"),
+        }
+    }
+
     fn accept_import_wallet_name(&mut self) {
         let name = self.input.trim().to_string();
         if name.is_empty() {
@@ -238,7 +272,10 @@ fn restore_terminal() -> Result<(), ClassicWalletError> {
     Ok(())
 }
 
-fn run_app(terminal: &mut DefaultTerminal, wallet: &ClassicWallet) -> Result<(), ClassicWalletError> {
+fn run_app(
+    terminal: &mut DefaultTerminal,
+    wallet: &ClassicWallet,
+) -> Result<(), ClassicWalletError> {
     let mut app = App::new(wallet);
 
     loop {
@@ -251,6 +288,12 @@ fn run_app(terminal: &mut DefaultTerminal, wallet: &ClassicWallet) -> Result<(),
                         (View::CreateWallet, KeyCode::Esc)
                         | (View::ImportWalletName, KeyCode::Esc)
                         | (View::ImportWalletPrivateKey, KeyCode::Esc) => app.back_to_wallets(),
+                        (View::ConfirmDeleteWallet, KeyCode::Char('y')) => {
+                            app.delete_selected_wallet(wallet);
+                        }
+                        (View::ConfirmDeleteWallet, KeyCode::Char('n') | KeyCode::Esc) => {
+                            app.cancel_delete_wallet();
+                        }
                         (View::CreateWallet, KeyCode::Enter) => app.create_wallet(wallet),
                         (View::ImportWalletName, KeyCode::Enter) => app.accept_import_wallet_name(),
                         (View::ImportWalletPrivateKey, KeyCode::Enter) => app.import_wallet(wallet),
@@ -270,7 +313,10 @@ fn run_app(terminal: &mut DefaultTerminal, wallet: &ClassicWallet) -> Result<(),
                         }
                         (View::WalletList, KeyCode::Char('c')) => app.start_create_wallet(),
                         (View::WalletList, KeyCode::Char('i')) => app.start_import_wallet(),
-                        (View::WalletList, KeyCode::Up | KeyCode::Char('k')) => app.select_previous(),
+                        (View::WalletList, KeyCode::Char('d')) => app.start_delete_wallet(),
+                        (View::WalletList, KeyCode::Up | KeyCode::Char('k')) => {
+                            app.select_previous()
+                        }
                         (View::WalletList, KeyCode::Down | KeyCode::Char('j')) => app.select_next(),
                         (View::WalletList, KeyCode::Enter) => app.open_selected_wallet(wallet),
                         _ => {}
@@ -291,6 +337,10 @@ fn render(frame: &mut Frame<'_>, app: &App) {
             render_wallet_list(frame, app);
             render_input_popup(frame, app);
         }
+        View::ConfirmDeleteWallet => {
+            render_wallet_list(frame, app);
+            render_delete_confirmation_popup(frame, app);
+        }
     }
 }
 
@@ -300,10 +350,14 @@ fn render_wallet_list(frame: &mut Frame<'_>, app: &App) {
     let title = Paragraph::new(Line::from(vec![
         Span::styled(
             "Classic Wallet UI",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::raw("  "),
-        Span::raw("↑/↓: select  Enter: details  c: create  i: import  r: refresh  q/Esc: quit"),
+        Span::raw(
+            "↑/↓: select  Enter: details  c: create  i: import  d: delete  r: refresh  q/Esc: quit",
+        ),
     ]))
     .block(Block::default().borders(Borders::ALL));
     frame.render_widget(title, chunks[0]);
@@ -347,7 +401,9 @@ fn render_wallet_details(frame: &mut Frame<'_>, app: &App) {
     let title = Paragraph::new(Line::from(vec![
         Span::styled(
             title_text,
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::raw("  "),
         Span::raw("Esc/Backspace: back  r: refresh  q: quit"),
@@ -382,8 +438,11 @@ fn render_wallet_details(frame: &mut Frame<'_>, app: &App) {
             .collect()
     };
 
-    let funds =
-        List::new(fund_items).block(Block::default().title("Funding entries").borders(Borders::ALL));
+    let funds = List::new(fund_items).block(
+        Block::default()
+            .title("Funding entries")
+            .borders(Borders::ALL),
+    );
     frame.render_widget(funds, detail_chunks[1]);
 
     render_status(frame, app, chunks[2]);
@@ -432,6 +491,44 @@ fn render_input_popup(frame: &mut Frame<'_>, app: &App) {
     let max_cursor_offset = chunks[1].width.saturating_sub(3) as usize;
     let cursor_offset = app.input.chars().count().min(max_cursor_offset) as u16;
     frame.set_cursor_position((chunks[1].x + 1 + cursor_offset, chunks[1].y + 1));
+}
+
+fn render_delete_confirmation_popup(frame: &mut Frame<'_>, app: &App) {
+    let area = centered_rect_fixed_height(60, 7, frame.area());
+    frame.render_widget(Clear, area);
+
+    let wallet_name = app
+        .selected_wallet()
+        .map(|wallet| wallet.name.as_str())
+        .unwrap_or("-");
+    let block = Block::default()
+        .title("Confirm deletion")
+        .borders(Borders::ALL);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    frame.render_widget(
+        Paragraph::new(format!("Delete wallet '{wallet_name}'?"))
+            .style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+        chunks[0],
+    );
+    frame.render_widget(
+        Paragraph::new("This also removes locally registered funds and pending transfers."),
+        chunks[1],
+    );
+    frame.render_widget(
+        Paragraph::new("y: delete  n/Esc: cancel").style(Style::default().fg(Color::Yellow)),
+        chunks[2],
+    );
 }
 
 fn centered_rect_fixed_height(percent_x: u16, height: u16, area: Rect) -> Rect {

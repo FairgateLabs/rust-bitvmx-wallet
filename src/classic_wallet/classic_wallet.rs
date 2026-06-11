@@ -154,6 +154,29 @@ impl ClassicWallet {
         Ok((pubkey, secret_key))
     }
 
+    pub fn remove_wallet(&self, identifier: &str) -> Result<(), ClassicWalletError> {
+        let wallet_key = StoreKey::ClassicWallet(identifier.to_string()).get_key();
+
+        if !self.store.has_key(&wallet_key, None)? {
+            return Err(ClassicWalletError::KeyNotFound(identifier.to_string()));
+        }
+
+        let funding_prefix = StoreKey::Funding(identifier.to_string(), String::new()).get_key();
+        for key in self.store.partial_compare_keys(&funding_prefix, None)? {
+            self.store.remove(key, None)?;
+        }
+
+        let transfer_prefix =
+            StoreKey::PendingTransfer(identifier.to_string(), String::new()).get_key();
+        for key in self.store.partial_compare_keys(&transfer_prefix, None)? {
+            self.store.remove(key, None)?;
+        }
+
+        self.store.remove(wallet_key, None)?;
+
+        Ok(())
+    }
+
     pub fn add_funding(
         &self,
         identifier: &str,
@@ -372,13 +395,13 @@ impl ClassicWallet {
 
         let key_funding =
             StoreKey::Funding(identifier.to_string(), funding_id.to_string()).get_key();
-        let (outpoint, origin_amount): (OutPoint, u64) =
-            self.store
-                .get(&key_funding, None)?
-                .ok_or(ClassicWalletError::FundingNotFound(
-                    identifier.to_string(),
-                    funding_id.to_string(),
-                ))?;
+        let (outpoint, origin_amount): (OutPoint, u64) = self
+            .store
+            .get(&key_funding, None)?
+            .ok_or(ClassicWalletError::FundingNotFound(
+                identifier.to_string(),
+                funding_id.to_string(),
+            ))?;
 
         let (result, change) = self.create_transfer_transaction(
             outpoint,
@@ -670,11 +693,7 @@ mod tests {
         let config = clean_and_load_config("config/regtest.yaml")?;
         let bitcoind_config = BitcoindConfig::default();
 
-        let bitcoind = Bitcoind::new(
-            bitcoind_config,
-            config.bitcoin.clone(),
-            None
-        );
+        let bitcoind = Bitcoind::new(bitcoind_config, config.bitcoin.clone(), None);
 
         bitcoind.start()?;
 
@@ -834,11 +853,7 @@ mod tests {
 
         let bitcoind_config = BitcoindConfig::default();
 
-        let bitcoind = Bitcoind::new(
-            bitcoind_config,
-            config.bitcoin.clone(),
-            None
-        );
+        let bitcoind = Bitcoind::new(bitcoind_config, config.bitcoin.clone(), None);
 
         bitcoind.start().unwrap();
 
@@ -1232,11 +1247,7 @@ mod tests {
 
         let bitcoind_config = BitcoindConfig::default();
 
-        let bitcoind = Bitcoind::new(
-            bitcoind_config,
-            config.bitcoin.clone(),
-            None
-        );
+        let bitcoind = Bitcoind::new(bitcoind_config, config.bitcoin.clone(), None);
 
         bitcoind.start().unwrap();
 

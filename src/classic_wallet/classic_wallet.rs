@@ -184,11 +184,27 @@ impl ClassicWallet {
         outpoint: OutPoint,
         amount: u64,
     ) -> Result<(), ClassicWalletError> {
+        self.add_funding_with_optional_amount(identifier, funding_id, outpoint, Some(amount))
+    }
+
+    pub fn add_funding_with_optional_amount(
+        &self,
+        identifier: &str,
+        funding_id: &str,
+        outpoint: OutPoint,
+        amount: Option<u64>,
+    ) -> Result<(), ClassicWalletError> {
         if funding_id.trim().is_empty() {
             return Err(ClassicWalletError::FundingIdError(
                 "funding_id cannot be empty or white space".to_string(),
             ));
         }
+
+        let amount = match amount {
+            Some(amount) => amount,
+            None => self.get_outpoint_amount_from_rpc(&outpoint)?,
+        };
+
         let key = StoreKey::Funding(identifier.to_string(), funding_id.to_string()).get_key();
 
         if self.store.has_key(&key, None)? {
@@ -198,6 +214,20 @@ impl ClassicWallet {
         self.store.set(key, (outpoint, amount), None)?;
 
         Ok(())
+    }
+
+    pub fn get_outpoint_amount_from_rpc(
+        &self,
+        outpoint: &OutPoint,
+    ) -> Result<u64, ClassicWalletError> {
+        let bitcoin_client = self.bitcoin_client.as_ref().ok_or_else(|| {
+            ClassicWalletError::FundingIdError("Bitcoin RPC client is not initialized".to_string())
+        })?;
+
+        Ok(bitcoin_client
+            .get_tx_out(&outpoint.txid, outpoint.vout)?
+            .value
+            .to_sat())
     }
 
     pub fn import_partial_private_keys(

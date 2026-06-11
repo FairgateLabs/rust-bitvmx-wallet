@@ -88,7 +88,8 @@ fn main() {
                     process::exit(1);
                 }
             };
-            match wallet.add_funding(identifier, funding_id, outpoint, *amount) {
+            match wallet.add_funding_with_optional_amount(identifier, funding_id, outpoint, *amount)
+            {
                 Ok(_) => println!("Added funding"),
                 Err(e) => eprintln!("Error: {e}"),
             }

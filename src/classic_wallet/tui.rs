@@ -13,7 +13,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
     DefaultTerminal, Frame,
 };
-use std::{io, rc::Rc, time::Duration};
+use std::{io, rc::Rc, str::FromStr, time::Duration};
 
 struct WalletItem {
     name: String,
@@ -26,6 +26,9 @@ enum View {
     CreateWallet,
     ImportWalletName,
     ImportWalletPrivateKey,
+    AddFundingName,
+    AddFundingOutpoint,
+    AddFundingAmount,
     ConfirmDeleteWallet,
     ShowPrivateKey,
 }
@@ -39,6 +42,8 @@ struct App {
     input: String,
     import_wallet_name: String,
     private_key: String,
+    add_funding_id: String,
+    add_outpoint: String,
 }
 
 impl App {
@@ -53,6 +58,8 @@ impl App {
             input: String::new(),
             import_wallet_name: String::new(),
             private_key: String::new(),
+            add_funding_id: String::new(),
+            add_outpoint: String::new(),
         };
         app.refresh_wallets(wallet);
         app
@@ -138,6 +145,8 @@ impl App {
         self.input.clear();
         self.import_wallet_name.clear();
         self.private_key.clear();
+        self.add_funding_id.clear();
+        self.add_outpoint.clear();
         self.status = "Back to wallet list".to_string();
     }
 
@@ -199,6 +208,95 @@ impl App {
             }
             Err(e) => self.status = format!("Failed to export private key: {e}"),
         }
+    }
+
+    fn start_add_funding(&mut self) {
+        if self.selected_wallet().is_none() {
+            self.status = "No wallet selected".to_string();
+            return;
+        }
+
+        self.input.clear();
+        self.add_funding_id.clear();
+        self.add_outpoint.clear();
+        self.view = View::AddFundingName;
+        self.status = "Enter a name for this funding entry".to_string();
+    }
+
+    fn accept_add_funding_name(&mut self) {
+        let funding_id = self.input.trim().to_string();
+        if funding_id.is_empty() {
+            self.status = "Funding name cannot be empty".to_string();
+            return;
+        }
+
+        self.add_funding_id = funding_id;
+        self.input.clear();
+        self.view = View::AddFundingOutpoint;
+        self.status = "Enter outpoint as txid:vout".to_string();
+    }
+
+    fn accept_add_funding_outpoint(&mut self) {
+        let outpoint = self.input.trim().to_string();
+        if OutPoint::from_str(&outpoint).is_err() {
+            self.status = "Invalid outpoint. Use txid:vout".to_string();
+            return;
+        }
+
+        self.add_outpoint = outpoint;
+        self.input.clear();
+        self.view = View::AddFundingAmount;
+        self.status = "Enter amount in sats, or press r to fetch it from Bitcoin RPC".to_string();
+    }
+
+    fn add_funding_with_manual_amount(&mut self, wallet: &ClassicWallet) {
+        let amount = match self.input.trim().parse::<u64>() {
+            Ok(amount) => amount,
+            Err(_) => {
+                self.status = "Invalid amount. Enter sats as a whole number".to_string();
+                return;
+            }
+        };
+
+        self.add_funding(wallet, Some(amount));
+    }
+
+    fn add_funding_from_rpc(&mut self, wallet: &ClassicWallet) {
+        self.add_funding(wallet, None);
+    }
+
+    fn add_funding(&mut self, wallet: &ClassicWallet, amount: Option<u64>) {
+        let Some(wallet_name) = self.selected_wallet().map(|wallet| wallet.name.clone()) else {
+            self.status = "No wallet selected".to_string();
+            return;
+        };
+        let outpoint = match OutPoint::from_str(&self.add_outpoint) {
+            Ok(outpoint) => outpoint,
+            Err(e) => {
+                self.status = format!("Invalid outpoint: {e}");
+                return;
+            }
+        };
+        let funding_id = self.add_funding_id.clone();
+
+        match wallet.add_funding_with_optional_amount(&wallet_name, &funding_id, outpoint, amount) {
+            Ok(()) => {
+                self.input.clear();
+                self.add_funding_id.clear();
+                self.add_outpoint.clear();
+                self.open_selected_wallet(wallet);
+                self.status = format!("Added funding '{funding_id}' to {wallet_name}");
+            }
+            Err(e) => self.status = format!("Failed to add funding: {e}"),
+        }
+    }
+
+    fn cancel_add_funding(&mut self) {
+        self.input.clear();
+        self.add_funding_id.clear();
+        self.add_outpoint.clear();
+        self.view = View::WalletDetails;
+        self.status = "Add funding cancelled".to_string();
     }
 
     fn cancel_delete_wallet(&mut self) {
@@ -308,6 +406,9 @@ fn run_app(
                         (View::CreateWallet, KeyCode::Esc)
                         | (View::ImportWalletName, KeyCode::Esc)
                         | (View::ImportWalletPrivateKey, KeyCode::Esc) => app.back_to_wallets(),
+                        (View::AddFundingName, KeyCode::Esc)
+                        | (View::AddFundingOutpoint, KeyCode::Esc)
+                        | (View::AddFundingAmount, KeyCode::Esc) => app.cancel_add_funding(),
                         (View::ConfirmDeleteWallet, KeyCode::Char('y')) => {
                             app.delete_selected_wallet(wallet);
                         }
@@ -323,14 +424,28 @@ fn run_app(
                         (View::CreateWallet, KeyCode::Enter) => app.create_wallet(wallet),
                         (View::ImportWalletName, KeyCode::Enter) => app.accept_import_wallet_name(),
                         (View::ImportWalletPrivateKey, KeyCode::Enter) => app.import_wallet(wallet),
+                        (View::AddFundingName, KeyCode::Enter) => app.accept_add_funding_name(),
+                        (View::AddFundingOutpoint, KeyCode::Enter) => {
+                            app.accept_add_funding_outpoint()
+                        }
+                        (View::AddFundingAmount, KeyCode::Enter) => {
+                            app.add_funding_with_manual_amount(wallet);
+                        }
+                        (View::AddFundingAmount, KeyCode::Char('r')) => {
+                            app.add_funding_from_rpc(wallet)
+                        }
                         (View::CreateWallet, code)
                         | (View::ImportWalletName, code)
-                        | (View::ImportWalletPrivateKey, code) => app.handle_text_input(code),
+                        | (View::ImportWalletPrivateKey, code)
+                        | (View::AddFundingName, code)
+                        | (View::AddFundingOutpoint, code)
+                        | (View::AddFundingAmount, code) => app.handle_text_input(code),
                         (_, KeyCode::Char('q')) => break,
                         (View::WalletList, KeyCode::Esc) => break,
                         (View::WalletDetails, KeyCode::Esc | KeyCode::Backspace) => {
                             app.back_to_wallets();
                         }
+                        (View::WalletDetails, KeyCode::Char('a')) => app.start_add_funding(),
                         (_, KeyCode::Char('r')) => {
                             app.refresh_wallets(wallet);
                             if matches!(app.view, View::WalletDetails) {
@@ -362,6 +477,10 @@ fn render(frame: &mut Frame<'_>, app: &App) {
         View::WalletDetails => render_wallet_details(frame, app),
         View::CreateWallet | View::ImportWalletName | View::ImportWalletPrivateKey => {
             render_wallet_list(frame, app);
+            render_input_popup(frame, app);
+        }
+        View::AddFundingName | View::AddFundingOutpoint | View::AddFundingAmount => {
+            render_wallet_details(frame, app);
             render_input_popup(frame, app);
         }
         View::ConfirmDeleteWallet => {
@@ -437,7 +556,7 @@ fn render_wallet_details(frame: &mut Frame<'_>, app: &App) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw("  "),
-        Span::raw("Esc/Backspace: back  r: refresh  q: quit"),
+        Span::raw("Esc/Backspace: back  a: add funds  r: refresh  q: quit"),
     ]))
     .block(Block::default().borders(Borders::ALL));
     frame.render_widget(title, chunks[0]);
@@ -491,6 +610,13 @@ fn render_input_popup(frame: &mut Frame<'_>, app: &App) {
             "Private key / secret key",
             "*".repeat(app.input.chars().count()),
         ),
+        View::AddFundingName => ("Add funds", "Funding name", app.input.clone()),
+        View::AddFundingOutpoint => ("Add funds", "Outpoint (txid:vout)", app.input.clone()),
+        View::AddFundingAmount => (
+            "Add funds",
+            "Amount in sats (or press r to fetch from RPC)",
+            app.input.clone(),
+        ),
         _ => unreachable!(),
     };
 
@@ -515,7 +641,12 @@ fn render_input_popup(frame: &mut Frame<'_>, app: &App) {
     frame.render_widget(input, chunks[1]);
 
     frame.render_widget(
-        Paragraph::new("Enter: submit  Esc: cancel").style(Style::default().fg(Color::Yellow)),
+        Paragraph::new(if matches!(app.view, View::AddFundingAmount) {
+            "Enter: submit amount  r: fetch amount from RPC  Esc: cancel"
+        } else {
+            "Enter: submit  Esc: cancel"
+        })
+        .style(Style::default().fg(Color::Yellow)),
         chunks[2],
     );
 

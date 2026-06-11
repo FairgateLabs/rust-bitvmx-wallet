@@ -33,7 +33,8 @@ pub enum Commands {
         identifier: String,
         funding_id: String,
         outpoint: String,
-        amount: u64,
+        /// Amount in sats. If omitted, the wallet tries to read the UTXO value from Bitcoin RPC.
+        amount: Option<u64>,
     },
     /// Remove funding
     RemoveFunding {

@@ -27,6 +27,7 @@ enum View {
     ImportWalletName,
     ImportWalletPrivateKey,
     ConfirmDeleteWallet,
+    ShowPrivateKey,
 }
 
 struct App {
@@ -37,12 +38,13 @@ struct App {
     funds: Vec<(String, OutPoint, u64)>,
     input: String,
     import_wallet_name: String,
+    private_key: String,
 }
 
 impl App {
     fn new(wallet: &ClassicWallet) -> Self {
         let mut app = Self {
-            status: "Press ↑/↓ to select, Enter for details, c to create, i to import, d to delete, q/Esc to quit"
+            status: "Press ↑/↓ to select, Enter for details, c to create, i to import, d to delete, p for private key, q/Esc to quit"
                 .to_string(),
             wallets: Vec::new(),
             selected_wallet: 0,
@@ -50,6 +52,7 @@ impl App {
             funds: Vec::new(),
             input: String::new(),
             import_wallet_name: String::new(),
+            private_key: String::new(),
         };
         app.refresh_wallets(wallet);
         app
@@ -134,6 +137,7 @@ impl App {
         self.funds.clear();
         self.input.clear();
         self.import_wallet_name.clear();
+        self.private_key.clear();
         self.status = "Back to wallet list".to_string();
     }
 
@@ -179,6 +183,22 @@ impl App {
 
         self.view = View::ConfirmDeleteWallet;
         self.status = format!("Delete wallet '{wallet_name}'? Press y to confirm or n to cancel");
+    }
+
+    fn show_private_key(&mut self, wallet: &ClassicWallet) {
+        let Some(wallet_name) = self.selected_wallet().map(|wallet| wallet.name.clone()) else {
+            self.status = "No wallet selected".to_string();
+            return;
+        };
+
+        match wallet.export_wallet(&wallet_name) {
+            Ok((_, private_key)) => {
+                self.private_key = private_key.to_string();
+                self.view = View::ShowPrivateKey;
+                self.status = format!("Showing private key for {wallet_name}");
+            }
+            Err(e) => self.status = format!("Failed to export private key: {e}"),
+        }
     }
 
     fn cancel_delete_wallet(&mut self) {
@@ -294,6 +314,12 @@ fn run_app(
                         (View::ConfirmDeleteWallet, KeyCode::Char('n') | KeyCode::Esc) => {
                             app.cancel_delete_wallet();
                         }
+                        (
+                            View::ShowPrivateKey,
+                            KeyCode::Esc | KeyCode::Backspace | KeyCode::Enter,
+                        ) => {
+                            app.back_to_wallets();
+                        }
                         (View::CreateWallet, KeyCode::Enter) => app.create_wallet(wallet),
                         (View::ImportWalletName, KeyCode::Enter) => app.accept_import_wallet_name(),
                         (View::ImportWalletPrivateKey, KeyCode::Enter) => app.import_wallet(wallet),
@@ -314,6 +340,7 @@ fn run_app(
                         (View::WalletList, KeyCode::Char('c')) => app.start_create_wallet(),
                         (View::WalletList, KeyCode::Char('i')) => app.start_import_wallet(),
                         (View::WalletList, KeyCode::Char('d')) => app.start_delete_wallet(),
+                        (View::WalletList, KeyCode::Char('p')) => app.show_private_key(wallet),
                         (View::WalletList, KeyCode::Up | KeyCode::Char('k')) => {
                             app.select_previous()
                         }
@@ -341,6 +368,10 @@ fn render(frame: &mut Frame<'_>, app: &App) {
             render_wallet_list(frame, app);
             render_delete_confirmation_popup(frame, app);
         }
+        View::ShowPrivateKey => {
+            render_wallet_list(frame, app);
+            render_private_key_popup(frame, app);
+        }
     }
 }
 
@@ -356,7 +387,7 @@ fn render_wallet_list(frame: &mut Frame<'_>, app: &App) {
         ),
         Span::raw("  "),
         Span::raw(
-            "↑/↓: select  Enter: details  c: create  i: import  d: delete  r: refresh  q/Esc: quit",
+            "↑/↓: select  Enter: details  c: create  i: import  d: delete  p: private key  r: refresh  q/Esc: quit",
         ),
     ]))
     .block(Block::default().borders(Borders::ALL));
@@ -528,6 +559,46 @@ fn render_delete_confirmation_popup(frame: &mut Frame<'_>, app: &App) {
     frame.render_widget(
         Paragraph::new("y: delete  n/Esc: cancel").style(Style::default().fg(Color::Yellow)),
         chunks[2],
+    );
+}
+
+fn render_private_key_popup(frame: &mut Frame<'_>, app: &App) {
+    let area = centered_rect_fixed_height(80, 9, frame.area());
+    frame.render_widget(Clear, area);
+
+    let wallet_name = app
+        .selected_wallet()
+        .map(|wallet| wallet.name.as_str())
+        .unwrap_or("-");
+    let block = Block::default().title("Private key").borders(Borders::ALL);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(3),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    frame.render_widget(
+        Paragraph::new("WARNING: Never share this private key with anyone.")
+            .style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+        chunks[0],
+    );
+    frame.render_widget(Paragraph::new(format!("Wallet: {wallet_name}")), chunks[1]);
+    frame.render_widget(
+        Paragraph::new(format!(" {}", app.private_key))
+            .style(Style::default().fg(Color::Green))
+            .block(Block::default().borders(Borders::ALL)),
+        chunks[2],
+    );
+    frame.render_widget(
+        Paragraph::new("Esc/Enter: close").style(Style::default().fg(Color::Yellow)),
+        chunks[3],
     );
 }
 

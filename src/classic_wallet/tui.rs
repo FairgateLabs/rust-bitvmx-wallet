@@ -815,12 +815,6 @@ fn run_app(
                         (View::WalletDetails, KeyCode::Down | KeyCode::Char('j')) => {
                             app.select_next_fund()
                         }
-                        (_, KeyCode::Char('r')) => {
-                            app.refresh_wallets(wallet);
-                            if matches!(app.view, View::WalletDetails) {
-                                app.open_selected_wallet(wallet);
-                            }
-                        }
                         (View::WalletList, KeyCode::Char('c')) => app.start_create_wallet(),
                         (View::WalletList, KeyCode::Char('i')) => app.start_import_wallet(),
                         (View::WalletList, KeyCode::Char('d')) => app.start_delete_wallet(),
@@ -886,7 +880,7 @@ fn render_wallet_list(frame: &mut Frame<'_>, app: &App) {
         ),
         Span::raw("  "),
         Span::raw(
-            "↑/↓: select  Enter: details  c: create  i: import  d: delete  p: private key  r: refresh  q/Esc: quit",
+            "↑/↓: select  Enter: details  c: create  i: import  d: delete  p: private key  q/Esc: quit",
         ),
     ]))
     .block(Block::default().borders(Borders::ALL));
@@ -929,9 +923,9 @@ fn render_wallet_details(frame: &mut Frame<'_>, app: &App) {
         .unwrap_or_else(|| "Wallet details".to_string());
 
     let help = if app.is_regtest {
-        "↑/↓: select fund  s: transfer  c: confirm  m: check mined+confirm  a: add  f: regtest  r: refresh  Esc: back"
+        "↑/↓: select fund  s: transfer  c: confirm  m: check mined+confirm  a: add  f: regtest  Esc: back"
     } else {
-        "↑/↓: select fund  s: transfer  c: confirm  m: check mined+confirm  a: add  r: refresh  Esc: back"
+        "↑/↓: select fund  s: transfer  c: confirm  m: check mined+confirm  a: add  Esc: back"
     };
 
     let title = Paragraph::new(Line::from(vec![

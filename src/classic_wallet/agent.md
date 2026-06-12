@@ -11,7 +11,7 @@ This directory contains the older/simple wallet implementation for this crate. T
 - `errors.rs` — `ClassicWalletError` enum and conversions from dependent crates.
 - `mod.rs` — module declarations and re-exports.
 - `README.md` — user-facing usage notes for the classic wallet CLI.
-- `tui.rs` — currently empty/placeholder.
+- `tui.rs` — Ratatui/crossterm interactive terminal UI for the classic wallet (`cargo run --bin classic -- ui`).
 
 ## What the classic wallet does
 
@@ -50,6 +50,55 @@ A funding entry is not automatically synced from chain state. The classic wallet
 - `confirm_transfer` removes the pending transfer and original funding entry, then re-adds change under the same `funding_id` when change is non-zero.
 - `revert_transfer` only removes the pending marker; it does not touch chain state or attempt replacement.
 - `merge_utxos` spends several funding entries, sends the total minus fee to one segwit key output, and marks all source funding entries as pending. Confirming removes those funding entries because merge pending records have zero change.
+
+## TUI notes
+
+Run the interactive classic wallet TUI with:
+
+```sh
+cargo run --bin classic -- ui
+```
+
+The TUI is implemented in `tui.rs` with `ratatui` and `crossterm`. `main.rs` dispatches `Commands::Ui` to `tui::run(&wallet)` and disables tracing output in UI mode so logs do not corrupt the terminal screen.
+
+Current TUI behavior:
+
+- Wallet list screen:
+  - `↑`/`↓` or `k`/`j` select wallets.
+  - `Enter` opens wallet details.
+  - `c` creates a wallet using `BitcoinKeyType::P2wpkh`.
+  - `i` imports a private/secret key; private-key input is masked.
+  - `d` deletes the selected wallet after `y`/`n` confirmation.
+  - `p` displays the selected wallet private key in a warning popup.
+  - `r` refreshes; `q`/`Esc` quits.
+- Wallet details screen:
+  - Shows public key, bech32/P2WPKH address, total funds, and funding entries.
+  - Funding entries are selectable with `↑`/`↓` or `k`/`j`.
+  - Pending transfers are displayed below the funding entry with the pending txid, change amount, and change vout.
+  - `a` adds a local/manual funding entry. At the amount step, `r` fetches the UTXO amount from RPC via `add_funding_with_optional_amount(..., None)`.
+  - `f` regtest-funds the wallet when the configured network is regtest.
+  - `s` starts a transfer from the selected funding entry: destination pubkey, amount, and absolute fee are requested; fees below 500 sats are rejected; details are shown for `y`/`n` confirmation. The transfer is sent with `auto_confirm = false`, so it leaves a pending transfer.
+  - `c` locally confirms the selected pending transfer with `confirm_transfer`.
+  - `m` checks via RPC whether the selected pending transfer is mined and confirms it if mined. On regtest, it first mines one block, then checks and confirms.
+  - `Esc`/`Backspace` returns to the wallet list; `r` refreshes; `q` quits.
+
+Classic wallet APIs added for the TUI include:
+
+- `remove_wallet` — deletes a wallet plus local funding and pending-transfer records.
+- `add_funding_with_optional_amount` and `get_outpoint_amount_from_rpc` — allow manual or RPC-derived funding amounts.
+- `public_key_to_bech32_address` — derives display address for wallet details.
+- `is_regtest` — gates regtest-only UI features.
+- `list_pending_transfers` — exposes pending transfer status for display.
+- `is_transfer_mined` and `confirm_transfer_if_mined` — check RPC confirmation state and confirm local state when mined.
+
+Known TUI rough edges:
+
+- Single-file implementation; may need splitting as features grow.
+- Primitive text input only: no cursor movement, paste handling, input scrolling, or rich validation UI.
+- No panic-safe terminal cleanup.
+- Long wallet names, pubkeys, outpoints, and statuses may clip.
+- Private keys are stored/displayed as normal `String`s in memory.
+- Local wallet storage remains authoritative; chain/RPC checks are only explicit where implemented.
 
 ## CLI notes
 

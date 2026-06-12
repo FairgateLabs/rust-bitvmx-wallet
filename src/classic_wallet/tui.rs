@@ -56,6 +56,7 @@ enum View {
     RegtestFundAmount,
     ConfirmDeleteWallet,
     ShowPrivateKey,
+    ShowLink,
 }
 
 struct App {
@@ -74,12 +75,14 @@ struct App {
     transfer_amount: u64,
     transfer_fee: u64,
     is_regtest: bool,
+    is_testnet: bool,
+    link: String,
 }
 
 impl App {
     fn new(wallet: &ClassicWallet) -> Self {
         let mut app = Self {
-            status: "Press ↑/↓ to select, Enter for details, c to create, i to import, d to delete, p for private key, q/Esc to quit"
+            status: "Press ↑/↓ to select, Enter for details, c to create, i to import, d to delete, p for private key, l for link, q/Esc to quit"
                 .to_string(),
             wallets: Vec::new(),
             selected_wallet: 0,
@@ -95,6 +98,8 @@ impl App {
             transfer_amount: 0,
             transfer_fee: 0,
             is_regtest: wallet.is_regtest(),
+            is_testnet: wallet.is_testnet(),
+            link: String::new(),
         };
         app.refresh_wallets(wallet);
         app
@@ -245,6 +250,7 @@ impl App {
         self.transfer_destination.clear();
         self.transfer_amount = 0;
         self.transfer_fee = 0;
+        self.link.clear();
         self.status = "Back to wallet list".to_string();
     }
 
@@ -306,6 +312,57 @@ impl App {
             }
             Err(e) => self.status = format!("Failed to export private key: {e}"),
         }
+    }
+
+    fn show_selected_wallet_link(&mut self) {
+        if !self.is_testnet {
+            self.status = "Mempool links are only available on testnet".to_string();
+            return;
+        }
+
+        let Some((wallet_name, address)) = self
+            .selected_wallet()
+            .map(|wallet| (wallet.name.clone(), wallet.address.clone()))
+        else {
+            self.status = "No wallet selected".to_string();
+            return;
+        };
+
+        self.link = format!("https://mempool.space/testnet/address/{address}");
+        self.view = View::ShowLink;
+        self.status = format!("Mempool address link for {wallet_name}");
+    }
+
+    fn show_selected_fund_link(&mut self) {
+        if !self.is_testnet {
+            self.status = "Mempool links are only available on testnet".to_string();
+            return;
+        }
+
+        let Some((funding_id, txid, vout)) = self.selected_fund().map(|fund| {
+            (
+                fund.funding_id.clone(),
+                fund.outpoint.txid,
+                fund.outpoint.vout,
+            )
+        }) else {
+            self.status = "No funding entry selected".to_string();
+            return;
+        };
+
+        self.link = format!("https://mempool.space/testnet/tx/{txid}#flow=&vout={vout}");
+        self.view = View::ShowLink;
+        self.status = format!("Mempool transaction output link for '{funding_id}'");
+    }
+
+    fn close_link(&mut self) {
+        self.link.clear();
+        self.view = if self.funds.is_empty() {
+            View::WalletList
+        } else {
+            View::WalletDetails
+        };
+        self.status = "Closed link".to_string();
     }
 
     fn start_add_funding(&mut self) {
@@ -767,6 +824,9 @@ fn run_app(
                         ) => {
                             app.back_to_wallets();
                         }
+                        (View::ShowLink, KeyCode::Esc | KeyCode::Backspace | KeyCode::Enter) => {
+                            app.close_link();
+                        }
                         (View::CreateWallet, KeyCode::Enter) => app.create_wallet(wallet),
                         (View::ImportWalletName, KeyCode::Enter) => app.accept_import_wallet_name(),
                         (View::ImportWalletPrivateKey, KeyCode::Enter) => app.import_wallet(wallet),
@@ -812,6 +872,7 @@ fn run_app(
                             app.check_and_confirm_selected_transfer(wallet)
                         }
                         (View::WalletDetails, KeyCode::Char('f')) => app.start_regtest_fund(),
+                        (View::WalletDetails, KeyCode::Char('l')) => app.show_selected_fund_link(),
                         (View::WalletDetails, KeyCode::Up | KeyCode::Char('k')) => {
                             app.select_previous_fund()
                         }
@@ -822,6 +883,7 @@ fn run_app(
                         (View::WalletList, KeyCode::Char('i')) => app.start_import_wallet(),
                         (View::WalletList, KeyCode::Char('d')) => app.start_delete_wallet(),
                         (View::WalletList, KeyCode::Char('p')) => app.show_private_key(wallet),
+                        (View::WalletList, KeyCode::Char('l')) => app.show_selected_wallet_link(),
                         (View::WalletList, KeyCode::Up | KeyCode::Char('k')) => {
                             app.select_previous()
                         }
@@ -868,6 +930,14 @@ fn render(frame: &mut Frame<'_>, app: &App) {
             render_wallet_list(frame, app);
             render_private_key_popup(frame, app);
         }
+        View::ShowLink => {
+            if app.funds.is_empty() {
+                render_wallet_list(frame, app);
+            } else {
+                render_wallet_details(frame, app);
+            }
+            render_link_popup(frame, app);
+        }
     }
 }
 
@@ -883,7 +953,7 @@ fn render_wallet_list(frame: &mut Frame<'_>, app: &App) {
         ),
         Span::raw("  "),
         Span::raw(
-            "↑/↓: select  Enter: details  c: create  i: import  d: delete  p: private key  q/Esc: quit",
+            "↑/↓: select  Enter: details  c: create  i: import  d: delete  p: private key  l: link  q/Esc: quit",
         ),
     ]))
     .block(Block::default().borders(Borders::ALL));
@@ -932,9 +1002,9 @@ fn render_wallet_details(frame: &mut Frame<'_>, app: &App) {
         .unwrap_or_else(|| "Wallet details".to_string());
 
     let help = if app.is_regtest {
-        "↑/↓: select fund  s: transfer  c: confirm  m: check mined+confirm  a: add  f: regtest  Esc: back"
+        "↑/↓: select fund  s: transfer  c: confirm  m: check mined+confirm  a: add  f: regtest  l: link  Esc: back"
     } else {
-        "↑/↓: select fund  s: transfer  c: confirm  m: check mined+confirm  a: add  Esc: back"
+        "↑/↓: select fund  s: transfer  c: confirm  m: check mined+confirm  a: add  l: link  Esc: back"
     };
 
     let title = Paragraph::new(Line::from(vec![
@@ -1216,6 +1286,36 @@ fn render_private_key_popup(frame: &mut Frame<'_>, app: &App) {
     frame.render_widget(
         Paragraph::new("Esc/Enter: close").style(Style::default().fg(Color::Yellow)),
         chunks[3],
+    );
+}
+
+fn render_link_popup(frame: &mut Frame<'_>, app: &App) {
+    let area = centered_rect_fixed_height(90, 7, frame.area());
+    frame.render_widget(Clear, area);
+
+    let block = Block::default().title("Mempool link").borders(Borders::ALL);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(3),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    frame.render_widget(Paragraph::new("Testnet mempool.space link:"), chunks[0]);
+    frame.render_widget(
+        Paragraph::new(format!(" {}", app.link))
+            .style(Style::default().fg(Color::Green))
+            .block(Block::default().borders(Borders::ALL)),
+        chunks[1],
+    );
+    frame.render_widget(
+        Paragraph::new("Esc/Enter: close").style(Style::default().fg(Color::Yellow)),
+        chunks[2],
     );
 }
 

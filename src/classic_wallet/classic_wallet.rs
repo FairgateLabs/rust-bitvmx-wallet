@@ -100,6 +100,10 @@ impl ClassicWallet {
         self.network == network::Network::Regtest
     }
 
+    pub fn is_testnet(&self) -> bool {
+        self.network == network::Network::Testnet
+    }
+
     pub fn create_wallet(
         &self,
         identifier: &str,

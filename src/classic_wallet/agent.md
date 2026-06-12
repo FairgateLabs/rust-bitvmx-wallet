@@ -80,6 +80,7 @@ Current TUI behavior:
   - `s` starts a transfer from the selected funding entry: destination pubkey, amount, and absolute fee are requested; fees below 500 sats are rejected; details are shown for `y`/`n` confirmation. The transfer is sent with `auto_confirm = false`, so it leaves a pending transfer.
   - `c` locally confirms the selected pending transfer with `confirm_transfer`.
   - `m` checks via RPC whether the selected pending transfer is mined and confirms it if mined. On regtest, it first mines one block, then checks and confirms.
+  - `l` on testnet displays a mempool.space address link for the selected wallet; inside wallet details, `l` displays a mempool.space tx-output link for the selected funding outpoint.
   - `Esc`/`Backspace` returns to the wallet list; `r` refreshes; `q` quits.
 
 Classic wallet APIs added for the TUI include:
@@ -88,6 +89,7 @@ Classic wallet APIs added for the TUI include:
 - `add_funding_with_optional_amount` and `get_outpoint_amount_from_rpc` — allow manual or RPC-derived funding amounts.
 - `public_key_to_bech32_address` — derives display address for wallet details.
 - `is_regtest` — gates regtest-only UI features.
+- `is_testnet` — gates testnet-only mempool.space link generation.
 - `list_pending_transfers` — exposes pending transfer status for display.
 - `is_transfer_mined` and `confirm_transfer_if_mined` — check RPC confirmation state and confirm local state when mined.
 

@@ -15,6 +15,9 @@ use ratatui::{
 };
 use std::{collections::HashMap, io, rc::Rc, str::FromStr, time::Duration};
 
+const NAME_COLUMN_WIDTH: usize = 10;
+const SATS_COLUMN_WIDTH: usize = 9;
+
 struct WalletItem {
     name: String,
     pubkey: String,
@@ -891,7 +894,13 @@ fn render_wallet_list(frame: &mut Frame<'_>, app: &App) {
     } else {
         app.wallets
             .iter()
-            .map(|wallet| ListItem::new(format!("{}  {}", wallet.name, wallet.pubkey)))
+            .map(|wallet| {
+                ListItem::new(format!(
+                    "{}  {}",
+                    fixed_width(&wallet.name, NAME_COLUMN_WIDTH),
+                    wallet.pubkey
+                ))
+            })
             .collect()
     };
 
@@ -972,7 +981,9 @@ fn render_wallet_details(frame: &mut Frame<'_>, app: &App) {
             .map(|fund| {
                 let mut lines = vec![Line::from(format!(
                     "{}  {} sats  {}",
-                    fund.funding_id, fund.amount, fund.outpoint
+                    fixed_width(&fund.funding_id, NAME_COLUMN_WIDTH),
+                    sats_width(fund.amount),
+                    fund.outpoint
                 ))];
                 if let Some(pending) = &fund.pending {
                     lines.push(Line::from(vec![
@@ -1206,6 +1217,19 @@ fn render_private_key_popup(frame: &mut Frame<'_>, app: &App) {
         Paragraph::new("Esc/Enter: close").style(Style::default().fg(Color::Yellow)),
         chunks[3],
     );
+}
+
+fn fixed_width(value: &str, width: usize) -> String {
+    let mut text = value.chars().take(width).collect::<String>();
+    let len = text.chars().count();
+    if len < width {
+        text.push_str(&" ".repeat(width - len));
+    }
+    text
+}
+
+fn sats_width(amount: u64) -> String {
+    format!("{amount:>width$}", width = SATS_COLUMN_WIDTH)
 }
 
 fn centered_rect_fixed_height(percent_x: u16, height: u16, area: Rect) -> Rect {

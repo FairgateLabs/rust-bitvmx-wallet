@@ -11,7 +11,7 @@ This directory contains the older/simple wallet implementation for this crate. T
 - `errors.rs` — `ClassicWalletError` enum and conversions from dependent crates.
 - `mod.rs` — module declarations and re-exports.
 - `README.md` — user-facing usage notes for the classic wallet CLI.
-- `tui.rs` — Ratatui/crossterm interactive terminal UI for the classic wallet (`cargo run --bin classic -- ui`).
+- `tui.rs` — Ratatui/crossterm interactive terminal UI for the classic wallet, compiled only with the `ui` feature (`cargo run --features ui --bin classic -- ui`).
 
 ## What the classic wallet does
 
@@ -56,10 +56,10 @@ A funding entry is not automatically synced from chain state. The classic wallet
 Run the interactive classic wallet TUI with:
 
 ```sh
-cargo run --bin classic -- ui
+cargo run --features ui --bin classic -- ui
 ```
 
-The TUI is implemented in `tui.rs` with `ratatui` and `crossterm`. `main.rs` dispatches `Commands::Ui` to `tui::run(&wallet)` and disables tracing output in UI mode so logs do not corrupt the terminal screen.
+The TUI is implemented in `tui.rs` with optional `ratatui` and `crossterm` dependencies behind the `ui` feature. `main.rs` exposes and dispatches `Commands::Ui` to `tui::run(&wallet)` only when compiled with `--features ui`, and disables tracing output in UI mode so logs do not corrupt the terminal screen.
 
 Current TUI behavior:
 

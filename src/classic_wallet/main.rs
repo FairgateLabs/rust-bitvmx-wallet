@@ -2,6 +2,7 @@ pub mod classic_wallet;
 mod cli;
 pub mod config;
 pub mod errors;
+#[cfg(feature = "ui")]
 mod tui;
 
 use clap::Parser;
@@ -24,6 +25,16 @@ fn config_trace_aux(ui_mode: bool) {
         .init();
 }
 
+#[cfg(feature = "ui")]
+fn matches_ui_command(command: &Commands) -> bool {
+    matches!(command, Commands::Ui)
+}
+
+#[cfg(not(feature = "ui"))]
+fn matches_ui_command(_command: &Commands) -> bool {
+    false
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -37,7 +48,7 @@ fn main() {
             process::exit(1);
         }
     };
-    let ui_mode = matches!(&cli.command, Commands::Ui);
+    let ui_mode = cfg!(feature = "ui") && matches_ui_command(&cli.command);
     config_trace_aux(ui_mode);
 
     let init_client = match &cli.command {
@@ -179,6 +190,7 @@ fn main() {
                 println!("- Pubkey: {pubkey}");
             }
         }
+        #[cfg(feature = "ui")]
         Commands::Ui => match tui::run(&wallet) {
             Ok(_) => println!("Interactive UI closed"),
             Err(e) => eprintln!("Error: {e}"),

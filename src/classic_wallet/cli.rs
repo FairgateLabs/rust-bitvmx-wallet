@@ -79,6 +79,7 @@ pub enum Commands {
     /// List wallets
     ListWallets,
     /// Start the interactive terminal UI
+    #[cfg(feature = "ui")]
     Ui,
     /// Import partial private keys to create a wallet from the aggregated private key
     ImportPartialPrivateKeys {

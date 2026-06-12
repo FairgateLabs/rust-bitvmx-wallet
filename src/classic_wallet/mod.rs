@@ -1,6 +1,7 @@
 pub mod classic_wallet;
 pub mod config;
 pub mod errors;
+#[cfg(feature = "ui")]
 pub mod tui;
 
 // Re-export everything

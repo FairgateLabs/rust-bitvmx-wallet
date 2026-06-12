@@ -11,8 +11,8 @@ use config::ClassicWalletConfig;
 use std::process;
 use tracing_subscriber::EnvFilter;
 
-fn config_trace_aux() {
-    let default_modules = ["info"];
+fn config_trace_aux(ui_mode: bool) {
+    let default_modules = if ui_mode { ["off"] } else { ["info"] };
 
     let filter = EnvFilter::builder()
         .parse(default_modules.join(","))
@@ -37,7 +37,8 @@ fn main() {
             process::exit(1);
         }
     };
-    config_trace_aux();
+    let ui_mode = matches!(&cli.command, Commands::Ui);
+    config_trace_aux(ui_mode);
 
     let init_client = match &cli.command {
         Commands::BtcToSat { .. } => false,

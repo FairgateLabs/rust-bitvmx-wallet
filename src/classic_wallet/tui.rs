@@ -30,6 +30,8 @@ enum View {
     AddFundingName,
     AddFundingOutpoint,
     AddFundingAmount,
+    RegtestFundName,
+    RegtestFundAmount,
     ConfirmDeleteWallet,
     ShowPrivateKey,
 }
@@ -45,6 +47,7 @@ struct App {
     private_key: String,
     add_funding_id: String,
     add_outpoint: String,
+    is_regtest: bool,
 }
 
 impl App {
@@ -61,6 +64,7 @@ impl App {
             private_key: String::new(),
             add_funding_id: String::new(),
             add_outpoint: String::new(),
+            is_regtest: wallet.is_regtest(),
         };
         app.refresh_wallets(wallet);
         app
@@ -304,6 +308,68 @@ impl App {
         self.status = "Add funding cancelled".to_string();
     }
 
+    fn start_regtest_fund(&mut self) {
+        if !self.is_regtest {
+            self.status = "Regtest funding is only available on regtest".to_string();
+            return;
+        }
+        if self.selected_wallet().is_none() {
+            self.status = "No wallet selected".to_string();
+            return;
+        }
+
+        self.input.clear();
+        self.add_funding_id.clear();
+        self.view = View::RegtestFundName;
+        self.status = "Enter a name for this regtest funding entry".to_string();
+    }
+
+    fn accept_regtest_fund_name(&mut self) {
+        let funding_id = self.input.trim().to_string();
+        if funding_id.is_empty() {
+            self.status = "Funding name cannot be empty".to_string();
+            return;
+        }
+
+        self.add_funding_id = funding_id;
+        self.input.clear();
+        self.view = View::RegtestFundAmount;
+        self.status = "Enter wanted regtest funding amount in sats".to_string();
+    }
+
+    fn regtest_fund(&mut self, wallet: &ClassicWallet) {
+        let Some(wallet_name) = self.selected_wallet().map(|wallet| wallet.name.clone()) else {
+            self.status = "No wallet selected".to_string();
+            return;
+        };
+        let amount = match self.input.trim().parse::<u64>() {
+            Ok(amount) => amount,
+            Err(_) => {
+                self.status = "Invalid amount. Enter sats as a whole number".to_string();
+                return;
+            }
+        };
+        let funding_id = self.add_funding_id.clone();
+
+        match wallet.regtest_fund(&wallet_name, &funding_id, amount) {
+            Ok(()) => {
+                self.input.clear();
+                self.add_funding_id.clear();
+                self.open_selected_wallet(wallet);
+                self.status =
+                    format!("Regtest funded {wallet_name} with {amount} sats as '{funding_id}'");
+            }
+            Err(e) => self.status = format!("Failed to regtest fund: {e}"),
+        }
+    }
+
+    fn cancel_regtest_fund(&mut self) {
+        self.input.clear();
+        self.add_funding_id.clear();
+        self.view = View::WalletDetails;
+        self.status = "Regtest funding cancelled".to_string();
+    }
+
     fn cancel_delete_wallet(&mut self) {
         self.view = View::WalletList;
         self.status = "Delete cancelled".to_string();
@@ -414,6 +480,8 @@ fn run_app(
                         (View::AddFundingName, KeyCode::Esc)
                         | (View::AddFundingOutpoint, KeyCode::Esc)
                         | (View::AddFundingAmount, KeyCode::Esc) => app.cancel_add_funding(),
+                        (View::RegtestFundName, KeyCode::Esc)
+                        | (View::RegtestFundAmount, KeyCode::Esc) => app.cancel_regtest_fund(),
                         (View::ConfirmDeleteWallet, KeyCode::Char('y')) => {
                             app.delete_selected_wallet(wallet);
                         }
@@ -439,18 +507,23 @@ fn run_app(
                         (View::AddFundingAmount, KeyCode::Char('r')) => {
                             app.add_funding_from_rpc(wallet)
                         }
+                        (View::RegtestFundName, KeyCode::Enter) => app.accept_regtest_fund_name(),
+                        (View::RegtestFundAmount, KeyCode::Enter) => app.regtest_fund(wallet),
                         (View::CreateWallet, code)
                         | (View::ImportWalletName, code)
                         | (View::ImportWalletPrivateKey, code)
                         | (View::AddFundingName, code)
                         | (View::AddFundingOutpoint, code)
-                        | (View::AddFundingAmount, code) => app.handle_text_input(code),
+                        | (View::AddFundingAmount, code)
+                        | (View::RegtestFundName, code)
+                        | (View::RegtestFundAmount, code) => app.handle_text_input(code),
                         (_, KeyCode::Char('q')) => break,
                         (View::WalletList, KeyCode::Esc) => break,
                         (View::WalletDetails, KeyCode::Esc | KeyCode::Backspace) => {
                             app.back_to_wallets();
                         }
                         (View::WalletDetails, KeyCode::Char('a')) => app.start_add_funding(),
+                        (View::WalletDetails, KeyCode::Char('f')) => app.start_regtest_fund(),
                         (_, KeyCode::Char('r')) => {
                             app.refresh_wallets(wallet);
                             if matches!(app.view, View::WalletDetails) {
@@ -484,7 +557,11 @@ fn render(frame: &mut Frame<'_>, app: &App) {
             render_wallet_list(frame, app);
             render_input_popup(frame, app);
         }
-        View::AddFundingName | View::AddFundingOutpoint | View::AddFundingAmount => {
+        View::AddFundingName
+        | View::AddFundingOutpoint
+        | View::AddFundingAmount
+        | View::RegtestFundName
+        | View::RegtestFundAmount => {
             render_wallet_details(frame, app);
             render_input_popup(frame, app);
         }
@@ -553,6 +630,12 @@ fn render_wallet_details(frame: &mut Frame<'_>, app: &App) {
         .map(|wallet| format!("Wallet: {}", wallet.name))
         .unwrap_or_else(|| "Wallet details".to_string());
 
+    let help = if app.is_regtest {
+        "Esc/Backspace: back  a: add funds  f: regtest fund  r: refresh  q: quit"
+    } else {
+        "Esc/Backspace: back  a: add funds  r: refresh  q: quit"
+    };
+
     let title = Paragraph::new(Line::from(vec![
         Span::styled(
             title_text,
@@ -561,7 +644,7 @@ fn render_wallet_details(frame: &mut Frame<'_>, app: &App) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw("  "),
-        Span::raw("Esc/Backspace: back  a: add funds  r: refresh  q: quit"),
+        Span::raw(help),
     ]))
     .block(Block::default().borders(Borders::ALL));
     frame.render_widget(title, chunks[0]);
@@ -629,6 +712,8 @@ fn render_input_popup(frame: &mut Frame<'_>, app: &App) {
             "Amount in sats (or press r to fetch from RPC)",
             app.input.clone(),
         ),
+        View::RegtestFundName => ("Regtest fund", "Funding name", app.input.clone()),
+        View::RegtestFundAmount => ("Regtest fund", "Amount wanted in sats", app.input.clone()),
         _ => unreachable!(),
     };
 

@@ -1,5 +1,5 @@
 use super::{classic_wallet::ClassicWallet, errors::ClassicWalletError};
-use bitcoin::{Amount, OutPoint};
+use bitcoin::{Amount, OutPoint, PublicKey, Txid};
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind},
     execute,
@@ -13,12 +13,27 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
     DefaultTerminal, Frame,
 };
-use std::{io, rc::Rc, str::FromStr, time::Duration};
+use std::{collections::HashMap, io, rc::Rc, str::FromStr, time::Duration};
 
 struct WalletItem {
     name: String,
     pubkey: String,
     address: String,
+}
+
+#[derive(Clone)]
+struct FundItem {
+    funding_id: String,
+    outpoint: OutPoint,
+    amount: u64,
+    pending: Option<PendingTransferItem>,
+}
+
+#[derive(Clone)]
+struct PendingTransferItem {
+    txid: Txid,
+    change_vout: u32,
+    change_amount: u64,
 }
 
 enum View {
@@ -30,6 +45,10 @@ enum View {
     AddFundingName,
     AddFundingOutpoint,
     AddFundingAmount,
+    TransferDestination,
+    TransferAmount,
+    TransferFee,
+    ConfirmTransferDetails,
     RegtestFundName,
     RegtestFundAmount,
     ConfirmDeleteWallet,
@@ -41,12 +60,16 @@ struct App {
     wallets: Vec<WalletItem>,
     selected_wallet: usize,
     view: View,
-    funds: Vec<(String, OutPoint, u64)>,
+    funds: Vec<FundItem>,
+    selected_fund: usize,
     input: String,
     import_wallet_name: String,
     private_key: String,
     add_funding_id: String,
     add_outpoint: String,
+    transfer_destination: String,
+    transfer_amount: u64,
+    transfer_fee: u64,
     is_regtest: bool,
 }
 
@@ -59,11 +82,15 @@ impl App {
             selected_wallet: 0,
             view: View::WalletList,
             funds: Vec::new(),
+            selected_fund: 0,
             input: String::new(),
             import_wallet_name: String::new(),
             private_key: String::new(),
             add_funding_id: String::new(),
             add_outpoint: String::new(),
+            transfer_destination: String::new(),
+            transfer_amount: 0,
+            transfer_fee: 0,
             is_regtest: wallet.is_regtest(),
         };
         app.refresh_wallets(wallet);
@@ -125,6 +152,30 @@ impl App {
         self.selected_wallet = (self.selected_wallet + 1) % self.wallets.len();
     }
 
+    fn selected_fund(&self) -> Option<&FundItem> {
+        self.funds.get(self.selected_fund)
+    }
+
+    fn select_previous_fund(&mut self) {
+        if self.funds.is_empty() {
+            return;
+        }
+
+        if self.selected_fund == 0 {
+            self.selected_fund = self.funds.len() - 1;
+        } else {
+            self.selected_fund -= 1;
+        }
+    }
+
+    fn select_next_fund(&mut self) {
+        if self.funds.is_empty() {
+            return;
+        }
+
+        self.selected_fund = (self.selected_fund + 1) % self.funds.len();
+    }
+
     fn open_selected_wallet(&mut self, wallet: &ClassicWallet) {
         let Some(selected_wallet) = self.selected_wallet() else {
             self.status = "No wallet selected".to_string();
@@ -134,8 +185,40 @@ impl App {
         match wallet.list_funds(&selected_wallet.name) {
             Ok(funds) => {
                 let wallet_name = selected_wallet.name.clone();
+                let pending = match wallet.list_pending_transfers(&wallet_name) {
+                    Ok(pending) => pending
+                        .into_iter()
+                        .map(|p| {
+                            (
+                                p.funding_id,
+                                PendingTransferItem {
+                                    txid: p.txid,
+                                    change_vout: p.change_vout,
+                                    change_amount: p.change_amount_sat,
+                                },
+                            )
+                        })
+                        .collect::<HashMap<_, _>>(),
+                    Err(e) => {
+                        self.status =
+                            format!("Loaded funds, but failed to load pending transfers: {e}");
+                        HashMap::new()
+                    }
+                };
                 let total = funds.iter().map(|(_, _, amount)| amount).sum::<u64>();
-                self.funds = funds;
+                self.funds = funds
+                    .into_iter()
+                    .map(|(funding_id, outpoint, amount)| {
+                        let pending = pending.get(&funding_id).cloned();
+                        FundItem {
+                            funding_id,
+                            outpoint,
+                            amount,
+                            pending,
+                        }
+                    })
+                    .collect();
+                self.selected_fund = self.selected_fund.min(self.funds.len().saturating_sub(1));
                 self.view = View::WalletDetails;
                 self.status = format!(
                     "{wallet_name}: {} funding entries, {total} sats total",
@@ -156,6 +239,9 @@ impl App {
         self.private_key.clear();
         self.add_funding_id.clear();
         self.add_outpoint.clear();
+        self.transfer_destination.clear();
+        self.transfer_amount = 0;
+        self.transfer_fee = 0;
         self.status = "Back to wallet list".to_string();
     }
 
@@ -306,6 +392,181 @@ impl App {
         self.add_outpoint.clear();
         self.view = View::WalletDetails;
         self.status = "Add funding cancelled".to_string();
+    }
+
+    fn start_transfer(&mut self) {
+        if self.selected_fund().is_none() {
+            self.status = "No funding entry selected".to_string();
+            return;
+        }
+        if self
+            .selected_fund()
+            .and_then(|fund| fund.pending.as_ref())
+            .is_some()
+        {
+            self.status = "Selected funding entry already has a pending transfer".to_string();
+            return;
+        }
+
+        self.input.clear();
+        self.transfer_destination.clear();
+        self.transfer_amount = 0;
+        self.transfer_fee = 0;
+        self.view = View::TransferDestination;
+        self.status = "Enter destination public key".to_string();
+    }
+
+    fn accept_transfer_destination(&mut self) {
+        let destination = self.input.trim().to_string();
+        if PublicKey::from_str(&destination).is_err() {
+            self.status = "Invalid destination public key".to_string();
+            return;
+        }
+
+        self.transfer_destination = destination;
+        self.input.clear();
+        self.view = View::TransferAmount;
+        self.status = "Enter amount in sats".to_string();
+    }
+
+    fn accept_transfer_amount(&mut self) {
+        let amount = match self.input.trim().parse::<u64>() {
+            Ok(amount) if amount > 0 => amount,
+            _ => {
+                self.status = "Invalid amount. Enter sats as a positive whole number".to_string();
+                return;
+            }
+        };
+
+        self.transfer_amount = amount;
+        self.input.clear();
+        self.view = View::TransferFee;
+        self.status = "Enter absolute tx fee in sats (minimum 500)".to_string();
+    }
+
+    fn accept_transfer_fee(&mut self) {
+        let fee = match self.input.trim().parse::<u64>() {
+            Ok(fee) => fee,
+            Err(_) => {
+                self.status = "Invalid fee. Enter sats as a whole number".to_string();
+                return;
+            }
+        };
+        if fee < 500 {
+            self.status = "Rejected: tx fee must be at least 500 sats".to_string();
+            return;
+        }
+
+        self.transfer_fee = fee;
+        self.input.clear();
+        self.view = View::ConfirmTransferDetails;
+        self.status = "Review transfer details. Press y to send or n/Esc to cancel".to_string();
+    }
+
+    fn send_transfer(&mut self, wallet: &ClassicWallet) {
+        let Some(wallet_name) = self.selected_wallet().map(|wallet| wallet.name.clone()) else {
+            self.status = "No wallet selected".to_string();
+            return;
+        };
+        let Some(fund) = self.selected_fund().cloned() else {
+            self.status = "No funding entry selected".to_string();
+            return;
+        };
+        if self.transfer_fee < 500 {
+            self.status = "Rejected: tx fee must be at least 500 sats".to_string();
+            return;
+        }
+        let to_pubkey = match PublicKey::from_str(&self.transfer_destination) {
+            Ok(pubkey) => pubkey,
+            Err(e) => {
+                self.status = format!("Invalid destination public key: {e}");
+                return;
+            }
+        };
+
+        match wallet.fund_address(
+            &wallet_name,
+            &fund.funding_id,
+            to_pubkey,
+            &vec![self.transfer_amount],
+            self.transfer_fee,
+            false,
+            false,
+            None,
+        ) {
+            Ok(txid) => {
+                let funding_id = fund.funding_id;
+                self.transfer_destination.clear();
+                self.transfer_amount = 0;
+                self.transfer_fee = 0;
+                self.open_selected_wallet(wallet);
+                self.status = format!(
+                    "Transfer sent from '{funding_id}', txid: {txid}. Pending confirmation"
+                );
+            }
+            Err(e) => self.status = format!("Failed to send transfer: {e}"),
+        }
+    }
+
+    fn cancel_transfer(&mut self) {
+        self.input.clear();
+        self.transfer_destination.clear();
+        self.transfer_amount = 0;
+        self.transfer_fee = 0;
+        self.view = View::WalletDetails;
+        self.status = "Transfer cancelled".to_string();
+    }
+
+    fn confirm_selected_transfer(&mut self, wallet: &ClassicWallet) {
+        let Some(wallet_name) = self.selected_wallet().map(|wallet| wallet.name.clone()) else {
+            self.status = "No wallet selected".to_string();
+            return;
+        };
+        let Some(funding_id) = self.selected_fund().map(|fund| fund.funding_id.clone()) else {
+            self.status = "No funding entry selected".to_string();
+            return;
+        };
+
+        match wallet.confirm_transfer(&wallet_name, &funding_id) {
+            Ok(()) => {
+                self.open_selected_wallet(wallet);
+                self.status = format!("Confirmed pending transfer for '{funding_id}'");
+            }
+            Err(e) => self.status = format!("Failed to confirm transfer: {e}"),
+        }
+    }
+
+    fn check_and_confirm_selected_transfer(&mut self, wallet: &ClassicWallet) {
+        let Some(wallet_name) = self.selected_wallet().map(|wallet| wallet.name.clone()) else {
+            self.status = "No wallet selected".to_string();
+            return;
+        };
+        let Some(funding_id) = self.selected_fund().map(|fund| fund.funding_id.clone()) else {
+            self.status = "No funding entry selected".to_string();
+            return;
+        };
+
+        if self.is_regtest {
+            if let Err(e) = wallet.mine(1) {
+                self.status = format!("Failed to mine regtest block before checking transfer: {e}");
+                return;
+            }
+        }
+
+        match wallet.confirm_transfer_if_mined(&wallet_name, &funding_id) {
+            Ok(true) => {
+                self.open_selected_wallet(wallet);
+                let prefix = if self.is_regtest {
+                    "Mined 1 block. "
+                } else {
+                    ""
+                };
+                self.status =
+                    format!("{prefix}Transfer for '{funding_id}' is mined and was confirmed");
+            }
+            Ok(false) => self.status = format!("Transfer for '{funding_id}' is not mined yet"),
+            Err(e) => self.status = format!("Failed to check transfer: {e}"),
+        }
     }
 
     fn start_regtest_fund(&mut self) {
@@ -480,6 +741,15 @@ fn run_app(
                         (View::AddFundingName, KeyCode::Esc)
                         | (View::AddFundingOutpoint, KeyCode::Esc)
                         | (View::AddFundingAmount, KeyCode::Esc) => app.cancel_add_funding(),
+                        (View::TransferDestination, KeyCode::Esc)
+                        | (View::TransferAmount, KeyCode::Esc)
+                        | (View::TransferFee, KeyCode::Esc) => app.cancel_transfer(),
+                        (View::ConfirmTransferDetails, KeyCode::Char('y')) => {
+                            app.send_transfer(wallet)
+                        }
+                        (View::ConfirmTransferDetails, KeyCode::Char('n') | KeyCode::Esc) => {
+                            app.cancel_transfer()
+                        }
                         (View::RegtestFundName, KeyCode::Esc)
                         | (View::RegtestFundAmount, KeyCode::Esc) => app.cancel_regtest_fund(),
                         (View::ConfirmDeleteWallet, KeyCode::Char('y')) => {
@@ -507,6 +777,11 @@ fn run_app(
                         (View::AddFundingAmount, KeyCode::Char('r')) => {
                             app.add_funding_from_rpc(wallet)
                         }
+                        (View::TransferDestination, KeyCode::Enter) => {
+                            app.accept_transfer_destination()
+                        }
+                        (View::TransferAmount, KeyCode::Enter) => app.accept_transfer_amount(),
+                        (View::TransferFee, KeyCode::Enter) => app.accept_transfer_fee(),
                         (View::RegtestFundName, KeyCode::Enter) => app.accept_regtest_fund_name(),
                         (View::RegtestFundAmount, KeyCode::Enter) => app.regtest_fund(wallet),
                         (View::CreateWallet, code)
@@ -515,6 +790,9 @@ fn run_app(
                         | (View::AddFundingName, code)
                         | (View::AddFundingOutpoint, code)
                         | (View::AddFundingAmount, code)
+                        | (View::TransferDestination, code)
+                        | (View::TransferAmount, code)
+                        | (View::TransferFee, code)
                         | (View::RegtestFundName, code)
                         | (View::RegtestFundAmount, code) => app.handle_text_input(code),
                         (_, KeyCode::Char('q')) => break,
@@ -523,7 +801,20 @@ fn run_app(
                             app.back_to_wallets();
                         }
                         (View::WalletDetails, KeyCode::Char('a')) => app.start_add_funding(),
+                        (View::WalletDetails, KeyCode::Char('s')) => app.start_transfer(),
+                        (View::WalletDetails, KeyCode::Char('c')) => {
+                            app.confirm_selected_transfer(wallet)
+                        }
+                        (View::WalletDetails, KeyCode::Char('m')) => {
+                            app.check_and_confirm_selected_transfer(wallet)
+                        }
                         (View::WalletDetails, KeyCode::Char('f')) => app.start_regtest_fund(),
+                        (View::WalletDetails, KeyCode::Up | KeyCode::Char('k')) => {
+                            app.select_previous_fund()
+                        }
+                        (View::WalletDetails, KeyCode::Down | KeyCode::Char('j')) => {
+                            app.select_next_fund()
+                        }
                         (_, KeyCode::Char('r')) => {
                             app.refresh_wallets(wallet);
                             if matches!(app.view, View::WalletDetails) {
@@ -560,6 +851,9 @@ fn render(frame: &mut Frame<'_>, app: &App) {
         View::AddFundingName
         | View::AddFundingOutpoint
         | View::AddFundingAmount
+        | View::TransferDestination
+        | View::TransferAmount
+        | View::TransferFee
         | View::RegtestFundName
         | View::RegtestFundAmount => {
             render_wallet_details(frame, app);
@@ -568,6 +862,10 @@ fn render(frame: &mut Frame<'_>, app: &App) {
         View::ConfirmDeleteWallet => {
             render_wallet_list(frame, app);
             render_delete_confirmation_popup(frame, app);
+        }
+        View::ConfirmTransferDetails => {
+            render_wallet_details(frame, app);
+            render_transfer_confirmation_popup(frame, app);
         }
         View::ShowPrivateKey => {
             render_wallet_list(frame, app);
@@ -631,9 +929,9 @@ fn render_wallet_details(frame: &mut Frame<'_>, app: &App) {
         .unwrap_or_else(|| "Wallet details".to_string());
 
     let help = if app.is_regtest {
-        "Esc/Backspace: back  a: add funds  f: regtest fund  r: refresh  q: quit"
+        "↑/↓: select fund  s: transfer  c: confirm  m: check mined+confirm  a: add  f: regtest  r: refresh  Esc: back"
     } else {
-        "Esc/Backspace: back  a: add funds  r: refresh  q: quit"
+        "↑/↓: select fund  s: transfer  c: confirm  m: check mined+confirm  a: add  r: refresh  Esc: back"
     };
 
     let title = Paragraph::new(Line::from(vec![
@@ -654,7 +952,7 @@ fn render_wallet_details(frame: &mut Frame<'_>, app: &App) {
         .constraints([Constraint::Length(5), Constraint::Min(3)])
         .split(chunks[1]);
 
-    let total = app.funds.iter().map(|(_, _, amount)| amount).sum::<u64>();
+    let total = app.funds.iter().map(|fund| fund.amount).sum::<u64>();
     let pubkey = selected_wallet
         .map(|wallet| wallet.pubkey.as_str())
         .unwrap_or("-");
@@ -677,18 +975,49 @@ fn render_wallet_details(frame: &mut Frame<'_>, app: &App) {
     } else {
         app.funds
             .iter()
-            .map(|(funding_id, outpoint, amount)| {
-                ListItem::new(format!("{funding_id}  {amount} sats  {outpoint}"))
+            .map(|fund| {
+                let mut lines = vec![Line::from(format!(
+                    "{}  {} sats  {}",
+                    fund.funding_id, fund.amount, fund.outpoint
+                ))];
+                if let Some(pending) = &fund.pending {
+                    lines.push(Line::from(vec![
+                        Span::styled(
+                            "  PENDING",
+                            Style::default()
+                                .fg(Color::Yellow)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::raw(format!(
+                            " txid: {}  change: {} sats @ vout {}",
+                            pending.txid, pending.change_amount, pending.change_vout
+                        )),
+                    ]));
+                }
+                ListItem::new(lines)
             })
             .collect()
     };
 
-    let funds = List::new(fund_items).block(
-        Block::default()
-            .title("Funding entries")
-            .borders(Borders::ALL),
-    );
-    frame.render_widget(funds, detail_chunks[1]);
+    let funds = List::new(fund_items)
+        .block(
+            Block::default()
+                .title("Funding entries")
+                .borders(Borders::ALL),
+        )
+        .highlight_style(
+            Style::default()
+                .bg(Color::Blue)
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol("> ");
+
+    let mut state = ListState::default();
+    if !app.funds.is_empty() {
+        state.select(Some(app.selected_fund));
+    }
+    frame.render_stateful_widget(funds, detail_chunks[1], &mut state);
 
     render_status(frame, app, chunks[2]);
 }
@@ -712,6 +1041,9 @@ fn render_input_popup(frame: &mut Frame<'_>, app: &App) {
             "Amount in sats (or press r to fetch from RPC)",
             app.input.clone(),
         ),
+        View::TransferDestination => ("Transfer", "Destination public key", app.input.clone()),
+        View::TransferAmount => ("Transfer", "Amount in sats", app.input.clone()),
+        View::TransferFee => ("Transfer", "Fee in sats (minimum 500)", app.input.clone()),
         View::RegtestFundName => ("Regtest fund", "Funding name", app.input.clone()),
         View::RegtestFundAmount => ("Regtest fund", "Amount wanted in sats", app.input.clone()),
         _ => unreachable!(),
@@ -740,6 +1072,8 @@ fn render_input_popup(frame: &mut Frame<'_>, app: &App) {
     frame.render_widget(
         Paragraph::new(if matches!(app.view, View::AddFundingAmount) {
             "Enter: submit amount  r: fetch amount from RPC  Esc: cancel"
+        } else if matches!(app.view, View::TransferFee) {
+            "Enter: review transfer  Esc: cancel"
         } else {
             "Enter: submit  Esc: cancel"
         })
@@ -750,6 +1084,56 @@ fn render_input_popup(frame: &mut Frame<'_>, app: &App) {
     let max_cursor_offset = chunks[1].width.saturating_sub(3) as usize;
     let cursor_offset = app.input.chars().count().min(max_cursor_offset) as u16;
     frame.set_cursor_position((chunks[1].x + 1 + cursor_offset, chunks[1].y + 1));
+}
+
+fn render_transfer_confirmation_popup(frame: &mut Frame<'_>, app: &App) {
+    let area = centered_rect_fixed_height(80, 11, frame.area());
+    frame.render_widget(Clear, area);
+
+    let wallet_name = app
+        .selected_wallet()
+        .map(|wallet| wallet.name.as_str())
+        .unwrap_or("-");
+    let fund = app.selected_fund();
+    let funding_id = fund.map(|fund| fund.funding_id.as_str()).unwrap_or("-");
+    let outpoint = fund
+        .map(|fund| fund.outpoint.to_string())
+        .unwrap_or_else(|| "-".to_string());
+    let available = fund.map(|fund| fund.amount).unwrap_or(0);
+    let change = available.saturating_sub(app.transfer_amount + app.transfer_fee);
+
+    let block = Block::default()
+        .title("Confirm transfer")
+        .borders(Borders::ALL);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let lines = vec![
+        Line::from(format!("Wallet: {wallet_name}")),
+        Line::from(format!(
+            "Funding: {funding_id}  {available} sats  {outpoint}"
+        )),
+        Line::from(format!("Destination pubkey: {}", app.transfer_destination)),
+        Line::from(format!("Amount: {} sats", app.transfer_amount)),
+        Line::from(format!("Fee: {} sats", app.transfer_fee)),
+        Line::from(format!("Expected change: {change} sats")),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                "y",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(": send and leave pending  "),
+            Span::styled(
+                "n/Esc",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(": cancel"),
+        ]),
+    ];
+    frame.render_widget(Paragraph::new(lines), inner);
 }
 
 fn render_delete_confirmation_popup(frame: &mut Frame<'_>, app: &App) {

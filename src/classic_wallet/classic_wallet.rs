@@ -29,6 +29,14 @@ pub struct ClassicWallet {
     regtest_address: Option<Address>,
 }
 
+#[derive(Clone, Debug)]
+pub struct PendingTransferInfo {
+    pub funding_id: String,
+    pub txid: Txid,
+    pub change_vout: u32,
+    pub change_amount_sat: u64,
+}
+
 enum StoreKey {
     CreateWalletIndex,
     ClassicWallet(String),
@@ -511,6 +519,60 @@ impl ClassicWallet {
         self.store.remove(key, None)?;
 
         Ok(())
+    }
+
+    pub fn list_pending_transfers(
+        &self,
+        identifier: &str,
+    ) -> Result<Vec<PendingTransferInfo>, ClassicWalletError> {
+        let key = StoreKey::PendingTransfer(identifier.to_string(), String::new()).get_key();
+        let mut transfers = Vec::new();
+        for transfer_key in self.store.partial_compare_keys(&key, None)? {
+            if let Some((txid, change_vout, change_amount_sat)) =
+                self.store.get(&transfer_key, None)?
+            {
+                transfers.push(PendingTransferInfo {
+                    funding_id: transfer_key.strip_prefix(&key).unwrap().to_string(),
+                    txid,
+                    change_vout,
+                    change_amount_sat,
+                });
+            }
+        }
+        Ok(transfers)
+    }
+
+    pub fn is_transfer_mined(
+        &self,
+        identifier: &str,
+        funding_id: &str,
+    ) -> Result<bool, ClassicWalletError> {
+        let pending_key =
+            StoreKey::PendingTransfer(identifier.to_string(), funding_id.to_string()).get_key();
+        let (txid, _, _): (Txid, u32, u64) = self
+            .store
+            .get(&pending_key, None)?
+            .ok_or(ClassicWalletError::KeyNotFound(pending_key))?;
+
+        let bitcoin_client = self.bitcoin_client.as_ref().ok_or_else(|| {
+            ClassicWalletError::FundingIdError("Bitcoin RPC client is not initialized".to_string())
+        })?;
+
+        let tx = bitcoin_client.get_raw_transaction_info(&txid)?;
+        Ok(tx.confirmations.unwrap_or(0) > 0)
+    }
+
+    pub fn confirm_transfer_if_mined(
+        &self,
+        identifier: &str,
+        funding_id: &str,
+    ) -> Result<bool, ClassicWalletError> {
+        if self.is_transfer_mined(identifier, funding_id)? {
+            self.confirm_transfer(identifier, funding_id)?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     fn create_transfer_transaction(

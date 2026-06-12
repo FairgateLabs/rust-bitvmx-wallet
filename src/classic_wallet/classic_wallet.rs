@@ -1,5 +1,8 @@
 use super::{config::ClassicWalletConfig, errors::ClassicWalletError};
-use bitcoin::{network, Address, Amount, OutPoint, PrivateKey, PublicKey, Transaction, Txid};
+use bitcoin::{
+    key::CompressedPublicKey, network, Address, Amount, OutPoint, PrivateKey, PublicKey,
+    Transaction, Txid,
+};
 use bitvmx_bitcoin_rpc::bitcoin_client::{BitcoinClient, BitcoinClientApi};
 use key_manager::{
     create_key_manager_from_config, key_manager::KeyManager, key_type::BitcoinKeyType,
@@ -152,6 +155,19 @@ impl ClassicWallet {
             .ok_or(ClassicWalletError::KeyNotFound(key))?;
         let secret_key = self.key_manager.export_secret(&pubkey)?;
         Ok((pubkey, secret_key))
+    }
+
+    pub fn public_key_to_bech32_address(
+        &self,
+        pubkey: &PublicKey,
+    ) -> Result<Address, ClassicWalletError> {
+        let compressed_pubkey = CompressedPublicKey::try_from(*pubkey).map_err(|_| {
+            ClassicWalletError::KeyNotFound(
+                "Cannot create bech32 address from uncompressed public key".to_string(),
+            )
+        })?;
+
+        Ok(Address::p2wpkh(&compressed_pubkey, self.network))
     }
 
     pub fn remove_wallet(&self, identifier: &str) -> Result<(), ClassicWalletError> {

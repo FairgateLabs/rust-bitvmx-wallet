@@ -1,5 +1,5 @@
 use super::{classic_wallet::ClassicWallet, errors::ClassicWalletError};
-use bitcoin::OutPoint;
+use bitcoin::{Amount, OutPoint};
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind},
     execute,
@@ -18,6 +18,7 @@ use std::{io, rc::Rc, str::FromStr, time::Duration};
 struct WalletItem {
     name: String,
     pubkey: String,
+    address: String,
 }
 
 enum View {
@@ -72,6 +73,10 @@ impl App {
                     .into_iter()
                     .map(|(name, pubkey)| WalletItem {
                         name,
+                        address: wallet
+                            .public_key_to_bech32_address(&pubkey)
+                            .map(|address| address.to_string())
+                            .unwrap_or_else(|e| format!("unavailable: {e}")),
                         pubkey: pubkey.to_string(),
                     })
                     .collect();
@@ -563,16 +568,23 @@ fn render_wallet_details(frame: &mut Frame<'_>, app: &App) {
 
     let detail_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(4), Constraint::Min(3)])
+        .constraints([Constraint::Length(5), Constraint::Min(3)])
         .split(chunks[1]);
 
     let total = app.funds.iter().map(|(_, _, amount)| amount).sum::<u64>();
     let pubkey = selected_wallet
         .map(|wallet| wallet.pubkey.as_str())
         .unwrap_or("-");
+    let address = selected_wallet
+        .map(|wallet| wallet.address.as_str())
+        .unwrap_or("-");
+    let total_btc = Amount::from_sat(total).to_btc();
     let summary = Paragraph::new(vec![
         Line::from(format!("Public key: {pubkey}")),
-        Line::from(format!("Funds available: {total} sats")),
+        Line::from(format!("Bech32 address: {address}")),
+        Line::from(format!(
+            "Funds available: {total} sats ({total_btc:.8} BTC)"
+        )),
     ])
     .block(Block::default().title("Summary").borders(Borders::ALL));
     frame.render_widget(summary, detail_chunks[0]);

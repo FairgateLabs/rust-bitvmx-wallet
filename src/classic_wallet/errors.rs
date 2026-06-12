@@ -9,10 +9,10 @@ pub enum ClassicWalletError {
     #[error("Error with the Bitcoin client: {0}")]
     BitcoinClientError(#[from] BitcoinClientError),
 
-    #[error("Error while trying to build protocol")]
+    #[error("Error while trying to build protocol {0}")]
     ProtocolBuilderError(#[from] protocol_builder::errors::ProtocolBuilderError),
 
-    #[error("Error with the key manager")]
+    #[error("Error with the key manager {0}")]
     KeyManagerError(#[from] key_manager::errors::KeyManagerError),
 
     #[error("Error with the storage backend")]

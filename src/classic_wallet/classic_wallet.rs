@@ -17,6 +17,7 @@ use protocol_builder::{
     },
 };
 
+use serde_json::Value;
 use std::{collections::HashMap, rc::Rc};
 use storage_backend::storage::{KeyValueStore, Storage};
 use tracing::{error, info};
@@ -106,6 +107,93 @@ impl ClassicWallet {
 
     pub fn is_testnet(&self) -> bool {
         self.network == network::Network::Testnet
+    }
+
+    pub fn is_mainnet(&self) -> bool {
+        self.network == network::Network::Bitcoin
+    }
+
+    pub fn auto_discover_funds(
+        &self,
+        identifier: &str,
+    ) -> Result<Vec<(String, OutPoint, u64)>, ClassicWalletError> {
+        let wallet_key = StoreKey::ClassicWallet(identifier.to_string()).get_key();
+        let pubkey: PublicKey = self
+            .store
+            .get(&wallet_key, None)?
+            .ok_or(ClassicWalletError::KeyNotFound(identifier.to_string()))?;
+        let address = self.public_key_to_bech32_address(&pubkey)?;
+
+        let base_url = match self.network {
+            network::Network::Bitcoin => "https://mempool.space/api",
+            network::Network::Testnet => "https://mempool.space/testnet/api",
+            _ => {
+                return Err(ClassicWalletError::MempoolApiError(
+                    "auto-discover is only available on mainnet and testnet".to_string(),
+                ))
+            }
+        };
+        let url = format!("{base_url}/address/{address}/utxo");
+        let response = reqwest::blocking::get(&url)?.error_for_status()?.text()?;
+        let utxos: Value = serde_json::from_str(&response)?;
+        let utxos = utxos.as_array().ok_or_else(|| {
+            ClassicWalletError::MempoolApiError("expected a JSON array of UTXOs".to_string())
+        })?;
+
+        let mut added = Vec::new();
+        for utxo in utxos {
+            let txid = utxo
+                .get("txid")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    ClassicWalletError::MempoolApiError("UTXO missing txid".to_string())
+                })?
+                .parse::<Txid>()
+                .map_err(|e| ClassicWalletError::MempoolApiError(format!("invalid txid: {e}")))?;
+            let vout = utxo.get("vout").and_then(Value::as_u64).ok_or_else(|| {
+                ClassicWalletError::MempoolApiError("UTXO missing vout".to_string())
+            })?;
+            let vout = u32::try_from(vout).map_err(|_| {
+                ClassicWalletError::MempoolApiError("UTXO vout does not fit in u32".to_string())
+            })?;
+            let amount = utxo.get("value").and_then(Value::as_u64).ok_or_else(|| {
+                ClassicWalletError::MempoolApiError("UTXO missing value".to_string())
+            })?;
+            let outpoint = OutPoint::new(txid, vout);
+
+            if self.funding_outpoint_exists(identifier, &outpoint)? {
+                continue;
+            }
+
+            let funding_id = self.unique_auto_funding_id(identifier)?;
+            self.add_funding(identifier, &funding_id, outpoint, amount)?;
+            added.push((funding_id, outpoint, amount));
+        }
+
+        Ok(added)
+    }
+
+    fn unique_auto_funding_id(&self, identifier: &str) -> Result<String, ClassicWalletError> {
+        let mut index = 1u64;
+        loop {
+            let candidate = format!("auto_{index}");
+            let key = StoreKey::Funding(identifier.to_string(), candidate.clone()).get_key();
+            if !self.store.has_key(&key, None)? {
+                return Ok(candidate);
+            }
+            index += 1;
+        }
+    }
+
+    fn funding_outpoint_exists(
+        &self,
+        identifier: &str,
+        outpoint: &OutPoint,
+    ) -> Result<bool, ClassicWalletError> {
+        Ok(self
+            .list_funds(identifier)?
+            .into_iter()
+            .any(|(_, existing_outpoint, _)| existing_outpoint == *outpoint))
     }
 
     pub fn create_wallet(
@@ -1332,7 +1420,9 @@ mod tests {
         let wallet = setup_wallet();
         let source = "source_wallet";
         let destination = "destination_wallet";
-        let source_pubkey = wallet.create_wallet(source, BitcoinKeyType::P2wpkh).unwrap();
+        let source_pubkey = wallet
+            .create_wallet(source, BitcoinKeyType::P2wpkh)
+            .unwrap();
         let destination_pubkey = wallet
             .create_wallet(destination, BitcoinKeyType::P2wpkh)
             .unwrap();

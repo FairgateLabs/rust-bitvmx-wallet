@@ -42,6 +42,15 @@ pub enum ClassicWalletError {
     #[error("Invalid partial private keys")]
     InvalidPartialPrivateKeys,
 
+    #[error("Mempool API error: {0}")]
+    MempoolApiError(String),
+
+    #[error("HTTP error: {0}")]
+    HttpError(#[from] reqwest::Error),
+
+    #[error("JSON error: {0}")]
+    JsonError(#[from] serde_json::Error),
+
     #[error("Terminal I/O error: {0}")]
     IoError(#[from] std::io::Error),
 }

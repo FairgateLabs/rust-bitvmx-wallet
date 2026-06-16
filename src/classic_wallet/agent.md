@@ -23,6 +23,7 @@ It can:
 - import/export wallets from secret/private keys,
 - import partial private keys and store the aggregated public key,
 - manually register/remove/list UTXOs as named funding entries,
+- auto-discover mainnet/testnet wallet UTXOs from mempool.space as `auto_[n]` funding entries,
 - build and sign spend transactions using `protocol_builder`,
 - optionally broadcast transactions through `bitvmx_bitcoin_rpc`,
 - track pending transfers until explicitly confirmed or reverted,
@@ -78,6 +79,7 @@ Current TUI behavior:
   - Funding entries are selectable with `↑`/`↓` or `k`/`j`.
   - Pending transfers are displayed below the funding entry with the pending txid, change amount, and change vout.
   - `a` adds a local/manual funding entry. At the amount step, `r` fetches the UTXO amount from RPC via `add_funding_with_optional_amount(..., None)`.
+  - `u` auto-discovers UTXOs for the selected wallet from mempool.space on testnet/mainnet and stores newly found outpoints as `auto_[n]` funding entries.
   - `d` deletes the selected funding entry after `y`/`n` confirmation. Entries with pending transfers are not deleted.
   - `J` joins all funding entries in the selected wallet into one wallet-owned output after entering a fee per input and confirming with `y`/`n`.
   - `f` regtest-funds the wallet when the configured network is regtest.
@@ -93,7 +95,8 @@ Classic wallet APIs added for the TUI include:
 - `add_funding_with_optional_amount` and `get_outpoint_amount_from_rpc` — allow manual or RPC-derived funding amounts.
 - `public_key_to_bech32_address` — derives display address for wallet details.
 - `is_regtest` — gates regtest-only UI features.
-- `is_testnet` — gates testnet-only mempool.space link generation.
+- `is_testnet` and `is_mainnet` — gate network-specific mempool.space features.
+- `auto_discover_funds` — fetches mempool.space UTXOs for a wallet address and adds unseen outpoints as `auto_[n]` funding entries on testnet/mainnet.
 - `list_pending_transfers` — exposes pending transfer status for display.
 - `is_transfer_mined` and `confirm_transfer_if_mined` — check RPC confirmation state and confirm local state when mined.
 

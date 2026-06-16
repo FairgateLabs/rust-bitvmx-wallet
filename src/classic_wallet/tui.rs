@@ -80,6 +80,7 @@ struct App {
     join_fee_per_input: u64,
     is_regtest: bool,
     is_testnet: bool,
+    is_mainnet: bool,
     link: String,
 }
 
@@ -104,6 +105,7 @@ impl App {
             join_fee_per_input: 0,
             is_regtest: wallet.is_regtest(),
             is_testnet: wallet.is_testnet(),
+            is_mainnet: wallet.is_mainnet(),
             link: String::new(),
         };
         app.refresh_wallets(wallet);
@@ -424,6 +426,28 @@ impl App {
 
     fn add_funding_from_rpc(&mut self, wallet: &ClassicWallet) {
         self.add_funding(wallet, None);
+    }
+
+    fn auto_discover_funds(&mut self, wallet: &ClassicWallet) {
+        if !(self.is_testnet || self.is_mainnet) {
+            self.status = "Auto-discover is only available on testnet and mainnet".to_string();
+            return;
+        }
+        let Some(wallet_name) = self.selected_wallet().map(|wallet| wallet.name.clone()) else {
+            self.status = "No wallet selected".to_string();
+            return;
+        };
+
+        match wallet.auto_discover_funds(&wallet_name) {
+            Ok(funds) => {
+                self.open_selected_wallet(wallet);
+                self.status = format!(
+                    "Auto-discovered {} new funds for {wallet_name}",
+                    funds.len()
+                );
+            }
+            Err(e) => self.status = format!("Failed to auto-discover funds: {e}"),
+        }
     }
 
     fn add_funding(&mut self, wallet: &ClassicWallet, amount: Option<u64>) {
@@ -1040,6 +1064,9 @@ fn run_app(
                             app.back_to_wallets();
                         }
                         (View::WalletDetails, KeyCode::Char('a')) => app.start_add_funding(),
+                        (View::WalletDetails, KeyCode::Char('u')) => {
+                            app.auto_discover_funds(wallet)
+                        }
                         (View::WalletDetails, KeyCode::Char('d')) => app.start_delete_fund(),
                         (View::WalletDetails, KeyCode::Char('J')) => app.start_join_funds(),
                         (View::WalletDetails, KeyCode::Char('s')) => app.start_transfer(),
@@ -1190,6 +1217,8 @@ fn render_wallet_details(frame: &mut Frame<'_>, app: &App) {
 
     let help = if app.is_regtest {
         "↑/↓: select fund  s: transfer  J: join  c: confirm  m: check mined+confirm  a: add  d: delete  f: regtest  l: link  Esc: back"
+    } else if app.is_testnet || app.is_mainnet {
+        "↑/↓: select fund  s: transfer  J: join  c: confirm  m: check mined+confirm  a: add  u: auto-discover  d: delete  l: link  Esc: back"
     } else {
         "↑/↓: select fund  s: transfer  J: join  c: confirm  m: check mined+confirm  a: add  d: delete  l: link  Esc: back"
     };

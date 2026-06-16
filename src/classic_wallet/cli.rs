@@ -41,6 +41,8 @@ pub enum Commands {
         identifier: String,
         funding_id: String,
     },
+    /// Auto-discover wallet UTXOs from mempool.space (mainnet/testnet)
+    AutoDiscover { identifier: String },
     /// Join all funds of a wallet into one UTXO
     JoinFunds {
         identifier: String,

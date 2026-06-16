@@ -52,7 +52,7 @@ fn main() {
     config_trace_aux(ui_mode);
 
     let init_client = match &cli.command {
-        Commands::BtcToSat { .. } => false,
+        Commands::BtcToSat { .. } | Commands::AutoDiscover { .. } => false,
         _ => true,
     };
 
@@ -111,6 +111,15 @@ fn main() {
             funding_id,
         } => match wallet.remove_funding(identifier, funding_id) {
             Ok(_) => println!("Removed funding"),
+            Err(e) => eprintln!("Error: {e}"),
+        },
+        Commands::AutoDiscover { identifier } => match wallet.auto_discover_funds(identifier) {
+            Ok(funds) => {
+                println!("Auto-discovered {} new funds", funds.len());
+                for (funding_id, outpoint, amount) in funds {
+                    println!("Funding ID: {funding_id}, OutPoint: {outpoint}, Amount: {amount}");
+                }
+            }
             Err(e) => eprintln!("Error: {e}"),
         },
         Commands::JoinFunds {

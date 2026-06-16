@@ -42,6 +42,7 @@ enum StoreKey {
     ClassicWallet(String),
     Funding(String, String),
     PendingTransfer(String, String),
+    PendingTransferDestinations(String, String),
 }
 
 impl StoreKey {
@@ -54,6 +55,9 @@ impl StoreKey {
             }
             Self::PendingTransfer(identifier, funding_id) => {
                 format!("{base}/{identifier}/transfers/{funding_id}")
+            }
+            Self::PendingTransferDestinations(identifier, funding_id) => {
+                format!("{base}/{identifier}/transfer-destinations/{funding_id}")
             }
             Self::CreateWalletIndex => format!("{base}/index"),
         }
@@ -201,6 +205,15 @@ impl ClassicWallet {
         let transfer_prefix =
             StoreKey::PendingTransfer(identifier.to_string(), String::new()).get_key();
         for key in self.store.partial_compare_keys(&transfer_prefix, None)? {
+            self.store.remove(key, None)?;
+        }
+
+        let transfer_destinations_prefix =
+            StoreKey::PendingTransferDestinations(identifier.to_string(), String::new()).get_key();
+        for key in self
+            .store
+            .partial_compare_keys(&transfer_destinations_prefix, None)?
+        {
             self.store.remove(key, None)?;
         }
 
@@ -556,6 +569,20 @@ impl ClassicWallet {
         self.store
             .set(pending_key, (txid, change_vout, change), None)?;
 
+        if !output_is_taproot {
+            let destinations = amount
+                .iter()
+                .enumerate()
+                .map(|(vout, value)| (to_pubkey, *value, vout as u32))
+                .collect::<Vec<_>>();
+            let destinations_key = StoreKey::PendingTransferDestinations(
+                identifier.to_string(),
+                funding_id.to_string(),
+            )
+            .get_key();
+            self.store.set(destinations_key, destinations, None)?;
+        }
+
         if auto_confirm {
             self.confirm_transfer(identifier, funding_id)?;
         }
@@ -577,6 +604,7 @@ impl ClassicWallet {
                 let outpoint = OutPoint::new(txid, vout);
                 self.add_funding(identifier, funding_id, outpoint, change)?;
             }
+            self.add_received_funds_for_controlled_destinations(identifier, funding_id, txid)?;
         } else {
             return Err(ClassicWalletError::KeyNotFound(key));
         }
@@ -596,8 +624,71 @@ impl ClassicWallet {
         }
 
         self.store.remove(key, None)?;
+        let destinations_key =
+            StoreKey::PendingTransferDestinations(identifier.to_string(), funding_id.to_string())
+                .get_key();
+        if self.store.has_key(&destinations_key, None)? {
+            self.store.remove(destinations_key, None)?;
+        }
 
         Ok(())
+    }
+
+    fn add_received_funds_for_controlled_destinations(
+        &self,
+        identifier: &str,
+        funding_id: &str,
+        txid: Txid,
+    ) -> Result<(), ClassicWalletError> {
+        let destinations_key =
+            StoreKey::PendingTransferDestinations(identifier.to_string(), funding_id.to_string())
+                .get_key();
+        let destinations: Option<Vec<(PublicKey, u64, u32)>> =
+            self.store.get(&destinations_key, None)?;
+        let Some(destinations) = destinations else {
+            return Ok(());
+        };
+
+        self.store.remove(destinations_key, None)?;
+        let wallets = self.get_wallets()?;
+        let tx_suffix = txid
+            .to_string()
+            .chars()
+            .rev()
+            .take(6)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect::<String>();
+
+        for (destination_pubkey, amount, vout) in destinations {
+            for (wallet_name, wallet_pubkey) in &wallets {
+                if *wallet_pubkey == destination_pubkey {
+                    let funding_id = self.unique_received_funding_id(wallet_name, &tx_suffix)?;
+                    self.add_funding(wallet_name, &funding_id, OutPoint::new(txid, vout), amount)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn unique_received_funding_id(
+        &self,
+        identifier: &str,
+        tx_suffix: &str,
+    ) -> Result<String, ClassicWalletError> {
+        let base = format!("received_{tx_suffix}");
+        let mut candidate = base.clone();
+        let mut index = 1u64;
+        while self.store.has_key(
+            &StoreKey::Funding(identifier.to_string(), candidate.clone()).get_key(),
+            None,
+        )? {
+            candidate = format!("{base}_{index}");
+            index += 1;
+        }
+        Ok(candidate)
     }
 
     pub fn list_pending_transfers(
@@ -1234,6 +1325,52 @@ mod tests {
         assert_eq!(funds.len(), 1);
         assert_eq!(funds[0].1, outpoint);
         assert_eq!(funds[0].2, amount);
+    }
+
+    #[test]
+    fn test_confirm_transfer_adds_received_fund_for_controlled_destination() {
+        let wallet = setup_wallet();
+        let source = "source_wallet";
+        let destination = "destination_wallet";
+        let source_pubkey = wallet.create_wallet(source, BitcoinKeyType::P2wpkh).unwrap();
+        let destination_pubkey = wallet
+            .create_wallet(destination, BitcoinKeyType::P2wpkh)
+            .unwrap();
+
+        let funding_id = "fund1";
+        let outpoint = OutPoint {
+            txid: Txid::all_zeros(),
+            vout: 0,
+        };
+        wallet
+            .add_funding(source, funding_id, outpoint, 100_000)
+            .unwrap();
+
+        let txid = wallet
+            .fund_address(
+                source,
+                funding_id,
+                destination_pubkey,
+                &vec![25_000],
+                1_000,
+                false,
+                false,
+                None,
+            )
+            .unwrap();
+        wallet.confirm_transfer(source, funding_id).unwrap();
+
+        let source_funds = wallet.list_funds(source).unwrap();
+        assert_eq!(source_funds.len(), 1);
+        assert_eq!(source_funds[0].2, 74_000);
+
+        let destination_funds = wallet.list_funds(destination).unwrap();
+        assert_eq!(destination_funds.len(), 1);
+        assert!(destination_funds[0].0.starts_with("received_"));
+        assert_eq!(destination_funds[0].1, OutPoint::new(txid, 0));
+        assert_eq!(destination_funds[0].2, 25_000);
+
+        assert_ne!(source_pubkey, destination_pubkey);
     }
 
     #[test]

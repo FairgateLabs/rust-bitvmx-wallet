@@ -76,6 +76,7 @@ Current TUI behavior:
   - Funding entries are selectable with `↑`/`↓` or `k`/`j`.
   - Pending transfers are displayed below the funding entry with the pending txid, change amount, and change vout.
   - `a` adds a local/manual funding entry. At the amount step, `r` fetches the UTXO amount from RPC via `add_funding_with_optional_amount(..., None)`.
+  - `d` deletes the selected funding entry after `y`/`n` confirmation. Entries with pending transfers are not deleted.
   - `f` regtest-funds the wallet when the configured network is regtest.
   - `s` starts a transfer from the selected funding entry: destination pubkey, amount, and absolute fee are requested; fees below 500 sats are rejected; details are shown for `y`/`n` confirmation. The transfer is sent with `auto_confirm = false`, so it leaves a pending transfer.
   - `c` locally confirms the selected pending transfer with `confirm_transfer`.

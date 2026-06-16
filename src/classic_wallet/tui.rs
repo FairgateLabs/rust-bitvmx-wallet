@@ -55,6 +55,7 @@ enum View {
     RegtestFundName,
     RegtestFundAmount,
     ConfirmDeleteWallet,
+    ConfirmDeleteFund,
     ShowPrivateKey,
     ShowLink,
 }
@@ -454,6 +455,48 @@ impl App {
         self.status = "Add funding cancelled".to_string();
     }
 
+    fn start_delete_fund(&mut self) {
+        let Some(fund) = self.selected_fund() else {
+            self.status = "No funding entry selected".to_string();
+            return;
+        };
+        if fund.pending.is_some() {
+            self.status = "Cannot delete a funding entry with a pending transfer".to_string();
+            return;
+        }
+
+        let funding_id = fund.funding_id.clone();
+        self.view = View::ConfirmDeleteFund;
+        self.status =
+            format!("Delete funding entry '{funding_id}'? Press y to confirm or n to cancel");
+    }
+
+    fn cancel_delete_fund(&mut self) {
+        self.view = View::WalletDetails;
+        self.status = "Delete funding cancelled".to_string();
+    }
+
+    fn delete_selected_fund(&mut self, wallet: &ClassicWallet) {
+        let Some(wallet_name) = self.selected_wallet().map(|wallet| wallet.name.clone()) else {
+            self.view = View::WalletDetails;
+            self.status = "No wallet selected".to_string();
+            return;
+        };
+        let Some(funding_id) = self.selected_fund().map(|fund| fund.funding_id.clone()) else {
+            self.view = View::WalletDetails;
+            self.status = "No funding entry selected".to_string();
+            return;
+        };
+
+        match wallet.remove_funding(&wallet_name, &funding_id) {
+            Ok(()) => {
+                self.open_selected_wallet(wallet);
+                self.status = format!("Deleted funding entry '{funding_id}' from {wallet_name}");
+            }
+            Err(e) => self.status = format!("Failed to delete funding entry: {e}"),
+        }
+    }
+
     fn start_transfer(&mut self) {
         if self.selected_fund().is_none() {
             self.status = "No funding entry selected".to_string();
@@ -497,6 +540,13 @@ impl App {
                 return;
             }
         };
+        let available = self.selected_fund().map(|fund| fund.amount).unwrap_or(0);
+        if amount > available {
+            self.status = format!(
+                "Rejected: amount is greater than selected funding entry balance ({available} sats)"
+            );
+            return;
+        }
 
         self.transfer_amount = amount;
         self.input.clear();
@@ -514,6 +564,18 @@ impl App {
         };
         if fee < 500 {
             self.status = "Rejected: tx fee must be at least 500 sats".to_string();
+            return;
+        }
+        let available = self.selected_fund().map(|fund| fund.amount).unwrap_or(0);
+        let Some(total_spend) = self.transfer_amount.checked_add(fee) else {
+            self.status = "Rejected: amount plus fee overflows".to_string();
+            return;
+        };
+        if total_spend > available {
+            let max_amount = available.saturating_sub(fee);
+            self.status = format!(
+                "Rejected: amount plus fee exceeds available funds. Max amount with this fee is {max_amount} sats"
+            );
             return;
         }
 
@@ -534,6 +596,17 @@ impl App {
         };
         if self.transfer_fee < 500 {
             self.status = "Rejected: tx fee must be at least 500 sats".to_string();
+            return;
+        }
+        let Some(total_spend) = self.transfer_amount.checked_add(self.transfer_fee) else {
+            self.status = "Rejected: amount plus fee overflows".to_string();
+            return;
+        };
+        if total_spend > fund.amount {
+            let max_amount = fund.amount.saturating_sub(self.transfer_fee);
+            self.status = format!(
+                "Rejected: amount plus fee exceeds available funds. Max amount with this fee is {max_amount} sats"
+            );
             return;
         }
         let to_pubkey = match PublicKey::from_str(&self.transfer_destination) {
@@ -818,6 +891,12 @@ fn run_app(
                         (View::ConfirmDeleteWallet, KeyCode::Char('n') | KeyCode::Esc) => {
                             app.cancel_delete_wallet();
                         }
+                        (View::ConfirmDeleteFund, KeyCode::Char('y')) => {
+                            app.delete_selected_fund(wallet);
+                        }
+                        (View::ConfirmDeleteFund, KeyCode::Char('n') | KeyCode::Esc) => {
+                            app.cancel_delete_fund();
+                        }
                         (
                             View::ShowPrivateKey,
                             KeyCode::Esc | KeyCode::Backspace | KeyCode::Enter,
@@ -864,6 +943,7 @@ fn run_app(
                             app.back_to_wallets();
                         }
                         (View::WalletDetails, KeyCode::Char('a')) => app.start_add_funding(),
+                        (View::WalletDetails, KeyCode::Char('d')) => app.start_delete_fund(),
                         (View::WalletDetails, KeyCode::Char('s')) => app.start_transfer(),
                         (View::WalletDetails, KeyCode::Char('c')) => {
                             app.confirm_selected_transfer(wallet)
@@ -920,7 +1000,11 @@ fn render(frame: &mut Frame<'_>, app: &App) {
         }
         View::ConfirmDeleteWallet => {
             render_wallet_list(frame, app);
-            render_delete_confirmation_popup(frame, app);
+            render_delete_wallet_confirmation_popup(frame, app);
+        }
+        View::ConfirmDeleteFund => {
+            render_wallet_details(frame, app);
+            render_delete_fund_confirmation_popup(frame, app);
         }
         View::ConfirmTransferDetails => {
             render_wallet_details(frame, app);
@@ -1002,9 +1086,9 @@ fn render_wallet_details(frame: &mut Frame<'_>, app: &App) {
         .unwrap_or_else(|| "Wallet details".to_string());
 
     let help = if app.is_regtest {
-        "↑/↓: select fund  s: transfer  c: confirm  m: check mined+confirm  a: add  f: regtest  l: link  Esc: back"
+        "↑/↓: select fund  s: transfer  c: confirm  m: check mined+confirm  a: add  d: delete  f: regtest  l: link  Esc: back"
     } else {
-        "↑/↓: select fund  s: transfer  c: confirm  m: check mined+confirm  a: add  l: link  Esc: back"
+        "↑/↓: select fund  s: transfer  c: confirm  m: check mined+confirm  a: add  d: delete  l: link  Esc: back"
     };
 
     let title = Paragraph::new(Line::from(vec![
@@ -1175,7 +1259,9 @@ fn render_transfer_confirmation_popup(frame: &mut Frame<'_>, app: &App) {
         .map(|fund| fund.outpoint.to_string())
         .unwrap_or_else(|| "-".to_string());
     let available = fund.map(|fund| fund.amount).unwrap_or(0);
-    let change = available.saturating_sub(app.transfer_amount + app.transfer_fee);
+    let total_spend = app.transfer_amount.saturating_add(app.transfer_fee);
+    let change = available.saturating_sub(total_spend);
+    let is_overspend = total_spend > available;
 
     let block = Block::default()
         .title("Confirm transfer")
@@ -1192,15 +1278,30 @@ fn render_transfer_confirmation_popup(frame: &mut Frame<'_>, app: &App) {
         Line::from(format!("Amount: {} sats", app.transfer_amount)),
         Line::from(format!("Fee: {} sats", app.transfer_fee)),
         Line::from(format!("Expected change: {change} sats")),
-        Line::from(""),
+        if is_overspend {
+            Line::from(vec![Span::styled(
+                "Amount plus fee exceeds available funds; confirmation is disabled.",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            )])
+        } else {
+            Line::from("")
+        },
         Line::from(vec![
             Span::styled(
                 "y",
                 Style::default()
-                    .fg(Color::Green)
+                    .fg(if is_overspend {
+                        Color::DarkGray
+                    } else {
+                        Color::Green
+                    })
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::raw(": send and leave pending  "),
+            Span::raw(if is_overspend {
+                ": disabled  "
+            } else {
+                ": send and leave pending  "
+            }),
             Span::styled(
                 "n/Esc",
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
@@ -1211,7 +1312,7 @@ fn render_transfer_confirmation_popup(frame: &mut Frame<'_>, app: &App) {
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
-fn render_delete_confirmation_popup(frame: &mut Frame<'_>, app: &App) {
+fn render_delete_wallet_confirmation_popup(frame: &mut Frame<'_>, app: &App) {
     let area = centered_rect_fixed_height(60, 7, frame.area());
     frame.render_widget(Clear, area);
 
@@ -1246,6 +1347,45 @@ fn render_delete_confirmation_popup(frame: &mut Frame<'_>, app: &App) {
     frame.render_widget(
         Paragraph::new("y: delete  n/Esc: cancel").style(Style::default().fg(Color::Yellow)),
         chunks[2],
+    );
+}
+
+fn render_delete_fund_confirmation_popup(frame: &mut Frame<'_>, app: &App) {
+    let area = centered_rect_fixed_height(70, 8, frame.area());
+    frame.render_widget(Clear, area);
+
+    let fund = app.selected_fund();
+    let funding_id = fund.map(|fund| fund.funding_id.as_str()).unwrap_or("-");
+    let amount = fund.map(|fund| fund.amount).unwrap_or(0);
+    let outpoint = fund
+        .map(|fund| fund.outpoint.to_string())
+        .unwrap_or_else(|| "-".to_string());
+    let block = Block::default()
+        .title("Confirm fund deletion")
+        .borders(Borders::ALL);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    frame.render_widget(
+        Paragraph::new(format!("Delete funding entry '{funding_id}'?"))
+            .style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+        chunks[0],
+    );
+    frame.render_widget(Paragraph::new(format!("Amount: {amount} sats")), chunks[1]);
+    frame.render_widget(Paragraph::new(format!("Outpoint: {outpoint}")), chunks[2]);
+    frame.render_widget(
+        Paragraph::new("y: delete  n/Esc: cancel").style(Style::default().fg(Color::Yellow)),
+        chunks[3],
     );
 }
 

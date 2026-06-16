@@ -41,6 +41,15 @@ pub enum Commands {
         identifier: String,
         funding_id: String,
     },
+    /// Join all funds of a wallet into one UTXO
+    JoinFunds {
+        identifier: String,
+        /// Fee per input in sats. Minimum 500. Total fee is this value times the number of funds.
+        fee_per_input: u64,
+        /// Immediately confirm the local wallet state after sending.
+        #[arg(long, default_value = "false")]
+        confirm: bool,
+    },
     /// Fund an address
     FundAddress {
         identifier: String,

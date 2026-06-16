@@ -50,6 +50,7 @@ A funding entry is not automatically synced from chain state. The classic wallet
 - `confirm_transfer` removes the pending transfer and original funding entry, then re-adds change under the same `funding_id` when change is non-zero.
 - `revert_transfer` only removes the pending marker; it does not touch chain state or attempt replacement.
 - `merge_utxos` spends several funding entries, sends the total minus fee to one segwit key output, and marks all source funding entries as pending. Confirming removes those funding entries because merge pending records have zero change.
+- `join_funds` spends all funding entries of one wallet to a single segwit output for the same wallet key. The user supplies a fee per input (minimum 500 sats), which is multiplied by the number of funding entries. The first funding id becomes the joined output after local confirmation; the other funding entries are removed.
 
 ## TUI notes
 
@@ -77,6 +78,7 @@ Current TUI behavior:
   - Pending transfers are displayed below the funding entry with the pending txid, change amount, and change vout.
   - `a` adds a local/manual funding entry. At the amount step, `r` fetches the UTXO amount from RPC via `add_funding_with_optional_amount(..., None)`.
   - `d` deletes the selected funding entry after `y`/`n` confirmation. Entries with pending transfers are not deleted.
+  - `J` joins all funding entries in the selected wallet into one wallet-owned output after entering a fee per input and confirming with `y`/`n`.
   - `f` regtest-funds the wallet when the configured network is regtest.
   - `s` starts a transfer from the selected funding entry: destination pubkey, amount, and absolute fee are requested; fees below 500 sats are rejected; details are shown for `y`/`n` confirmation. The transfer is sent with `auto_confirm = false`, so it leaves a pending transfer.
   - `c` locally confirms the selected pending transfer with `confirm_transfer`.

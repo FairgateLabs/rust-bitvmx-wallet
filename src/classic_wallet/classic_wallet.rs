@@ -314,6 +314,81 @@ impl ClassicWallet {
         Ok(())
     }
 
+    pub fn join_funds(
+        &self,
+        identifier: &str,
+        fee_per_input: u64,
+        auto_confirm: bool,
+    ) -> Result<Txid, ClassicWalletError> {
+        if fee_per_input < 500 {
+            return Err(ClassicWalletError::InsufficientFunds(
+                "fee per input must be at least 500 sats".to_string(),
+            ));
+        }
+
+        let wallet_key = StoreKey::ClassicWallet(identifier.to_string()).get_key();
+        let pubkey: PublicKey = self
+            .store
+            .get(&wallet_key, None)?
+            .ok_or(ClassicWalletError::KeyNotFound(identifier.to_string()))?;
+
+        let funds = self.list_funds(identifier)?;
+        if funds.is_empty() {
+            return Err(ClassicWalletError::FundingNotFound(
+                identifier.to_string(),
+                "no funds available".to_string(),
+            ));
+        }
+
+        let mut funding_data = HashMap::new();
+        let mut funding_ids = Vec::new();
+        let mut total_amount = 0u64;
+        for (i, (funding_id, outpoint, amount)) in funds.into_iter().enumerate() {
+            let pending_key =
+                StoreKey::PendingTransfer(identifier.to_string(), funding_id.clone()).get_key();
+            if self.store.has_key(&pending_key, None)? {
+                return Err(ClassicWalletError::TransferInProgress(pending_key));
+            }
+            total_amount = total_amount.checked_add(amount).ok_or_else(|| {
+                ClassicWalletError::InsufficientFunds("total funds overflow".to_string())
+            })?;
+            funding_data.insert(format!("{pubkey}_{i}"), (pubkey, outpoint, amount));
+            funding_ids.push(funding_id);
+        }
+
+        let total_fee = fee_per_input
+            .checked_mul(funding_ids.len() as u64)
+            .ok_or_else(|| {
+                ClassicWalletError::InsufficientFunds("total fee overflow".to_string())
+            })?;
+        if total_fee >= total_amount {
+            return Err(ClassicWalletError::InsufficientFunds(format!(
+                "total fee ({total_fee} sats) must be less than total funds ({total_amount} sats)"
+            )));
+        }
+
+        let result =
+            self.create_merge_transaction(pubkey, total_fee, funding_data, total_amount)?;
+        let txid = result.compute_txid();
+        let joined_amount = total_amount - total_fee;
+
+        for (i, funding_id) in funding_ids.iter().enumerate() {
+            let pending_key =
+                StoreKey::PendingTransfer(identifier.to_string(), funding_id.clone()).get_key();
+            let change_amount = if i == 0 { joined_amount } else { 0 };
+            self.store
+                .set(pending_key, (txid, 0, change_amount), None)?;
+        }
+
+        if auto_confirm {
+            for funding_id in funding_ids {
+                self.confirm_transfer(identifier, &funding_id)?;
+            }
+        }
+
+        Ok(txid)
+    }
+
     pub fn merge_utxos(
         &self,
         funding_access_data: HashMap<String, Vec<String>>,

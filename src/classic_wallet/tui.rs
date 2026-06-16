@@ -52,6 +52,8 @@ enum View {
     TransferAmount,
     TransferFee,
     ConfirmTransferDetails,
+    JoinFundsFee,
+    ConfirmJoinFunds,
     RegtestFundName,
     RegtestFundAmount,
     ConfirmDeleteWallet,
@@ -75,6 +77,7 @@ struct App {
     transfer_destination: String,
     transfer_amount: u64,
     transfer_fee: u64,
+    join_fee_per_input: u64,
     is_regtest: bool,
     is_testnet: bool,
     link: String,
@@ -98,6 +101,7 @@ impl App {
             transfer_destination: String::new(),
             transfer_amount: 0,
             transfer_fee: 0,
+            join_fee_per_input: 0,
             is_regtest: wallet.is_regtest(),
             is_testnet: wallet.is_testnet(),
             link: String::new(),
@@ -251,6 +255,7 @@ impl App {
         self.transfer_destination.clear();
         self.transfer_amount = 0;
         self.transfer_fee = 0;
+        self.join_fee_per_input = 0;
         self.link.clear();
         self.status = "Back to wallet list".to_string();
     }
@@ -495,6 +500,91 @@ impl App {
             }
             Err(e) => self.status = format!("Failed to delete funding entry: {e}"),
         }
+    }
+
+    fn start_join_funds(&mut self) {
+        if self.selected_wallet().is_none() {
+            self.status = "No wallet selected".to_string();
+            return;
+        }
+        if self.funds.is_empty() {
+            self.status = "No funds available to join".to_string();
+            return;
+        }
+        if self.funds.iter().any(|fund| fund.pending.is_some()) {
+            self.status = "Confirm or revert pending transfers before joining funds".to_string();
+            return;
+        }
+
+        self.input.clear();
+        self.join_fee_per_input = 0;
+        self.view = View::JoinFundsFee;
+        self.status = "Enter fee per input in sats (minimum 500)".to_string();
+    }
+
+    fn accept_join_funds_fee(&mut self) {
+        let fee_per_input = match self.input.trim().parse::<u64>() {
+            Ok(fee) => fee,
+            Err(_) => {
+                self.status = "Invalid fee. Enter sats as a whole number".to_string();
+                return;
+            }
+        };
+        if fee_per_input < 500 {
+            self.status = "Rejected: fee per input must be at least 500 sats".to_string();
+            return;
+        }
+        let input_count = self.funds.len() as u64;
+        let Some(total_fee) = fee_per_input.checked_mul(input_count) else {
+            self.status = "Rejected: total fee overflows".to_string();
+            return;
+        };
+        let total = self.funds.iter().map(|fund| fund.amount).sum::<u64>();
+        if total_fee >= total {
+            self.status = format!(
+                "Rejected: total fee ({total_fee} sats) must be less than total funds ({total} sats)"
+            );
+            return;
+        }
+
+        self.join_fee_per_input = fee_per_input;
+        self.input.clear();
+        self.view = View::ConfirmJoinFunds;
+        self.status = "Review join-funds details. Press y to send or n/Esc to cancel".to_string();
+    }
+
+    fn send_join_funds(&mut self, wallet: &ClassicWallet) {
+        let Some(wallet_name) = self.selected_wallet().map(|wallet| wallet.name.clone()) else {
+            self.status = "No wallet selected".to_string();
+            return;
+        };
+        let input_count = self.funds.len() as u64;
+        let Some(total_fee) = self.join_fee_per_input.checked_mul(input_count) else {
+            self.status = "Rejected: total fee overflows".to_string();
+            return;
+        };
+        let total = self.funds.iter().map(|fund| fund.amount).sum::<u64>();
+        if input_count == 0 || self.join_fee_per_input < 500 || total_fee >= total {
+            self.status = "Rejected: invalid join-funds parameters".to_string();
+            return;
+        }
+
+        match wallet.join_funds(&wallet_name, self.join_fee_per_input, false) {
+            Ok(txid) => {
+                self.join_fee_per_input = 0;
+                self.open_selected_wallet(wallet);
+                self.status =
+                    format!("Join-funds transaction sent, txid: {txid}. Pending confirmation");
+            }
+            Err(e) => self.status = format!("Failed to join funds: {e}"),
+        }
+    }
+
+    fn cancel_join_funds(&mut self) {
+        self.input.clear();
+        self.join_fee_per_input = 0;
+        self.view = View::WalletDetails;
+        self.status = "Join-funds cancelled".to_string();
     }
 
     fn start_transfer(&mut self) {
@@ -877,11 +967,16 @@ fn run_app(
                         (View::TransferDestination, KeyCode::Esc)
                         | (View::TransferAmount, KeyCode::Esc)
                         | (View::TransferFee, KeyCode::Esc) => app.cancel_transfer(),
+                        (View::JoinFundsFee, KeyCode::Esc) => app.cancel_join_funds(),
                         (View::ConfirmTransferDetails, KeyCode::Char('y')) => {
                             app.send_transfer(wallet)
                         }
                         (View::ConfirmTransferDetails, KeyCode::Char('n') | KeyCode::Esc) => {
                             app.cancel_transfer()
+                        }
+                        (View::ConfirmJoinFunds, KeyCode::Char('y')) => app.send_join_funds(wallet),
+                        (View::ConfirmJoinFunds, KeyCode::Char('n') | KeyCode::Esc) => {
+                            app.cancel_join_funds()
                         }
                         (View::RegtestFundName, KeyCode::Esc)
                         | (View::RegtestFundAmount, KeyCode::Esc) => app.cancel_regtest_fund(),
@@ -924,6 +1019,7 @@ fn run_app(
                         }
                         (View::TransferAmount, KeyCode::Enter) => app.accept_transfer_amount(),
                         (View::TransferFee, KeyCode::Enter) => app.accept_transfer_fee(),
+                        (View::JoinFundsFee, KeyCode::Enter) => app.accept_join_funds_fee(),
                         (View::RegtestFundName, KeyCode::Enter) => app.accept_regtest_fund_name(),
                         (View::RegtestFundAmount, KeyCode::Enter) => app.regtest_fund(wallet),
                         (View::CreateWallet, code)
@@ -935,6 +1031,7 @@ fn run_app(
                         | (View::TransferDestination, code)
                         | (View::TransferAmount, code)
                         | (View::TransferFee, code)
+                        | (View::JoinFundsFee, code)
                         | (View::RegtestFundName, code)
                         | (View::RegtestFundAmount, code) => app.handle_text_input(code),
                         (_, KeyCode::Char('q')) => break,
@@ -944,6 +1041,7 @@ fn run_app(
                         }
                         (View::WalletDetails, KeyCode::Char('a')) => app.start_add_funding(),
                         (View::WalletDetails, KeyCode::Char('d')) => app.start_delete_fund(),
+                        (View::WalletDetails, KeyCode::Char('J')) => app.start_join_funds(),
                         (View::WalletDetails, KeyCode::Char('s')) => app.start_transfer(),
                         (View::WalletDetails, KeyCode::Char('c')) => {
                             app.confirm_selected_transfer(wallet)
@@ -993,6 +1091,7 @@ fn render(frame: &mut Frame<'_>, app: &App) {
         | View::TransferDestination
         | View::TransferAmount
         | View::TransferFee
+        | View::JoinFundsFee
         | View::RegtestFundName
         | View::RegtestFundAmount => {
             render_wallet_details(frame, app);
@@ -1009,6 +1108,10 @@ fn render(frame: &mut Frame<'_>, app: &App) {
         View::ConfirmTransferDetails => {
             render_wallet_details(frame, app);
             render_transfer_confirmation_popup(frame, app);
+        }
+        View::ConfirmJoinFunds => {
+            render_wallet_details(frame, app);
+            render_join_funds_confirmation_popup(frame, app);
         }
         View::ShowPrivateKey => {
             render_wallet_list(frame, app);
@@ -1086,9 +1189,9 @@ fn render_wallet_details(frame: &mut Frame<'_>, app: &App) {
         .unwrap_or_else(|| "Wallet details".to_string());
 
     let help = if app.is_regtest {
-        "↑/↓: select fund  s: transfer  c: confirm  m: check mined+confirm  a: add  d: delete  f: regtest  l: link  Esc: back"
+        "↑/↓: select fund  s: transfer  J: join  c: confirm  m: check mined+confirm  a: add  d: delete  f: regtest  l: link  Esc: back"
     } else {
-        "↑/↓: select fund  s: transfer  c: confirm  m: check mined+confirm  a: add  d: delete  l: link  Esc: back"
+        "↑/↓: select fund  s: transfer  J: join  c: confirm  m: check mined+confirm  a: add  d: delete  l: link  Esc: back"
     };
 
     let title = Paragraph::new(Line::from(vec![
@@ -1203,6 +1306,11 @@ fn render_input_popup(frame: &mut Frame<'_>, app: &App) {
         View::TransferDestination => ("Transfer", "Destination public key", app.input.clone()),
         View::TransferAmount => ("Transfer", "Amount in sats", app.input.clone()),
         View::TransferFee => ("Transfer", "Fee in sats (minimum 500)", app.input.clone()),
+        View::JoinFundsFee => (
+            "Join funds",
+            "Fee per input in sats (minimum 500)",
+            app.input.clone(),
+        ),
         View::RegtestFundName => ("Regtest fund", "Funding name", app.input.clone()),
         View::RegtestFundAmount => ("Regtest fund", "Amount wanted in sats", app.input.clone()),
         _ => unreachable!(),
@@ -1233,6 +1341,8 @@ fn render_input_popup(frame: &mut Frame<'_>, app: &App) {
             "Enter: submit amount  r: fetch amount from RPC  Esc: cancel"
         } else if matches!(app.view, View::TransferFee) {
             "Enter: review transfer  Esc: cancel"
+        } else if matches!(app.view, View::JoinFundsFee) {
+            "Enter: review join-funds  Esc: cancel"
         } else {
             "Enter: submit  Esc: cancel"
         })
@@ -1298,6 +1408,67 @@ fn render_transfer_confirmation_popup(frame: &mut Frame<'_>, app: &App) {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::raw(if is_overspend {
+                ": disabled  "
+            } else {
+                ": send and leave pending  "
+            }),
+            Span::styled(
+                "n/Esc",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(": cancel"),
+        ]),
+    ];
+    frame.render_widget(Paragraph::new(lines), inner);
+}
+
+fn render_join_funds_confirmation_popup(frame: &mut Frame<'_>, app: &App) {
+    let area = centered_rect_fixed_height(75, 10, frame.area());
+    frame.render_widget(Clear, area);
+
+    let wallet_name = app
+        .selected_wallet()
+        .map(|wallet| wallet.name.as_str())
+        .unwrap_or("-");
+    let input_count = app.funds.len() as u64;
+    let total = app.funds.iter().map(|fund| fund.amount).sum::<u64>();
+    let total_fee = app.join_fee_per_input.saturating_mul(input_count);
+    let output_amount = total.saturating_sub(total_fee);
+    let is_invalid = input_count == 0 || app.join_fee_per_input < 500 || total_fee >= total;
+
+    let block = Block::default()
+        .title("Confirm join-funds")
+        .borders(Borders::ALL);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let lines = vec![
+        Line::from(format!("Wallet: {wallet_name}")),
+        Line::from(format!("Inputs: {input_count}")),
+        Line::from(format!("Total funds: {total} sats")),
+        Line::from(format!("Fee per input: {} sats", app.join_fee_per_input)),
+        Line::from(format!("Total fee: {total_fee} sats")),
+        Line::from(format!("Joined output amount: {output_amount} sats")),
+        if is_invalid {
+            Line::from(vec![Span::styled(
+                "Invalid join-funds parameters; confirmation is disabled.",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            )])
+        } else {
+            Line::from("")
+        },
+        Line::from(vec![
+            Span::styled(
+                "y",
+                Style::default()
+                    .fg(if is_invalid {
+                        Color::DarkGray
+                    } else {
+                        Color::Green
+                    })
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(if is_invalid {
                 ": disabled  "
             } else {
                 ": send and leave pending  "

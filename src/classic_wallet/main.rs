@@ -113,6 +113,14 @@ fn main() {
             Ok(_) => println!("Removed funding"),
             Err(e) => eprintln!("Error: {e}"),
         },
+        Commands::JoinFunds {
+            identifier,
+            fee_per_input,
+            confirm,
+        } => match wallet.join_funds(identifier, *fee_per_input, *confirm) {
+            Ok(txid) => println!("Joined funds, txid: {txid}"),
+            Err(e) => eprintln!("Error: {e}"),
+        },
         Commands::FundAddress {
             identifier,
             funding_id,

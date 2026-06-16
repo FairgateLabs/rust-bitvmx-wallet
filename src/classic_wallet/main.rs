@@ -52,7 +52,9 @@ fn main() {
     config_trace_aux(ui_mode);
 
     let init_client = match &cli.command {
-        Commands::BtcToSat { .. } | Commands::AutoDiscover { .. } => false,
+        Commands::BtcToSat { .. }
+        | Commands::AutoDiscover { .. }
+        | Commands::ImportFromFile { .. } => false,
         _ => true,
     };
 
@@ -77,6 +79,15 @@ fn main() {
             secret_key,
         } => match wallet.create_wallet_from_secret(identifier, secret_key) {
             Ok(_) => println!("Imported key for {identifier}"),
+            Err(e) => eprintln!("Error: {e}"),
+        },
+        Commands::ImportFromFile { path } => match wallet.import_wallets_from_file(path) {
+            Ok(imported) => {
+                println!("Imported {} wallets", imported.len());
+                for (name, pubkey) in imported {
+                    println!("- {name}: {pubkey}");
+                }
+            }
             Err(e) => eprintln!("Error: {e}"),
         },
         Commands::ExportWallet { identifier } => match wallet.export_wallet(identifier) {

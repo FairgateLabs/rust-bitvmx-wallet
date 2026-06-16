@@ -26,6 +26,8 @@ pub enum Commands {
         identifier: String,
         secret_key: String,
     },
+    /// Import wallets from a key-manager JSON file
+    ImportFromFile { path: String },
     /// Export a wallet
     ExportWallet { identifier: String },
     /// Add funding

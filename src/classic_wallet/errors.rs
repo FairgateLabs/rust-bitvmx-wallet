@@ -42,6 +42,9 @@ pub enum ClassicWalletError {
     #[error("Invalid partial private keys")]
     InvalidPartialPrivateKeys,
 
+    #[error("Wrong import file format: {0}")]
+    WrongImportFileFormat(String),
+
     #[error("Mempool API error: {0}")]
     MempoolApiError(String),
 

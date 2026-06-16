@@ -45,6 +45,7 @@ enum View {
     CreateWallet,
     ImportWalletName,
     ImportWalletPrivateKey,
+    ImportWalletFilePath,
     AddFundingName,
     AddFundingOutpoint,
     AddFundingAmount,
@@ -87,7 +88,7 @@ struct App {
 impl App {
     fn new(wallet: &ClassicWallet) -> Self {
         let mut app = Self {
-            status: "Press ↑/↓ to select, Enter for details, c to create, i to import, d to delete, p for private key, l for link, q/Esc to quit"
+            status: "Press ↑/↓ to select, Enter for details, c to create, i to import key, I to import file, d to delete, p for private key, l for link, q/Esc to quit"
                 .to_string(),
             wallets: Vec::new(),
             selected_wallet: 0,
@@ -294,6 +295,41 @@ impl App {
         self.import_wallet_name.clear();
         self.view = View::ImportWalletName;
         self.status = "Enter wallet name for imported private key".to_string();
+    }
+
+    fn start_import_wallet_file(&mut self) {
+        self.input.clear();
+        self.view = View::ImportWalletFilePath;
+        self.status = "Enter path to key-manager JSON file".to_string();
+    }
+
+    fn import_wallets_from_file(&mut self, wallet: &ClassicWallet) {
+        let path = self.input.trim().to_string();
+        if path.is_empty() {
+            self.status = "File path cannot be empty".to_string();
+            return;
+        }
+
+        match wallet.import_wallets_from_file(&path) {
+            Ok(imported) => {
+                let count = imported.len();
+                let first_name = imported.first().map(|(name, _)| name.clone());
+                self.input.clear();
+                self.view = View::WalletList;
+                self.refresh_wallets(wallet);
+                if let Some(first_name) = first_name {
+                    if let Some(index) = self
+                        .wallets
+                        .iter()
+                        .position(|wallet| wallet.name == first_name)
+                    {
+                        self.selected_wallet = index;
+                    }
+                }
+                self.status = format!("Imported {count} wallets from file");
+            }
+            Err(e) => self.status = format!("Failed to import wallets from file: {e}"),
+        }
     }
 
     fn start_delete_wallet(&mut self) {
@@ -984,7 +1020,8 @@ fn run_app(
                     match (&app.view, key.code) {
                         (View::CreateWallet, KeyCode::Esc)
                         | (View::ImportWalletName, KeyCode::Esc)
-                        | (View::ImportWalletPrivateKey, KeyCode::Esc) => app.back_to_wallets(),
+                        | (View::ImportWalletPrivateKey, KeyCode::Esc)
+                        | (View::ImportWalletFilePath, KeyCode::Esc) => app.back_to_wallets(),
                         (View::AddFundingName, KeyCode::Esc)
                         | (View::AddFundingOutpoint, KeyCode::Esc)
                         | (View::AddFundingAmount, KeyCode::Esc) => app.cancel_add_funding(),
@@ -1028,6 +1065,9 @@ fn run_app(
                         (View::CreateWallet, KeyCode::Enter) => app.create_wallet(wallet),
                         (View::ImportWalletName, KeyCode::Enter) => app.accept_import_wallet_name(),
                         (View::ImportWalletPrivateKey, KeyCode::Enter) => app.import_wallet(wallet),
+                        (View::ImportWalletFilePath, KeyCode::Enter) => {
+                            app.import_wallets_from_file(wallet)
+                        }
                         (View::AddFundingName, KeyCode::Enter) => app.accept_add_funding_name(),
                         (View::AddFundingOutpoint, KeyCode::Enter) => {
                             app.accept_add_funding_outpoint()
@@ -1049,6 +1089,7 @@ fn run_app(
                         (View::CreateWallet, code)
                         | (View::ImportWalletName, code)
                         | (View::ImportWalletPrivateKey, code)
+                        | (View::ImportWalletFilePath, code)
                         | (View::AddFundingName, code)
                         | (View::AddFundingOutpoint, code)
                         | (View::AddFundingAmount, code)
@@ -1086,6 +1127,7 @@ fn run_app(
                         }
                         (View::WalletList, KeyCode::Char('c')) => app.start_create_wallet(),
                         (View::WalletList, KeyCode::Char('i')) => app.start_import_wallet(),
+                        (View::WalletList, KeyCode::Char('I')) => app.start_import_wallet_file(),
                         (View::WalletList, KeyCode::Char('d')) => app.start_delete_wallet(),
                         (View::WalletList, KeyCode::Char('p')) => app.show_private_key(wallet),
                         (View::WalletList, KeyCode::Char('l')) => app.show_selected_wallet_link(),
@@ -1108,7 +1150,10 @@ fn render(frame: &mut Frame<'_>, app: &App) {
     match app.view {
         View::WalletList => render_wallet_list(frame, app),
         View::WalletDetails => render_wallet_details(frame, app),
-        View::CreateWallet | View::ImportWalletName | View::ImportWalletPrivateKey => {
+        View::CreateWallet
+        | View::ImportWalletName
+        | View::ImportWalletPrivateKey
+        | View::ImportWalletFilePath => {
             render_wallet_list(frame, app);
             render_input_popup(frame, app);
         }
@@ -1167,7 +1212,7 @@ fn render_wallet_list(frame: &mut Frame<'_>, app: &App) {
         ),
         Span::raw("  "),
         Span::raw(
-            "↑/↓: select  Enter: details  c: create  i: import  d: delete  p: private key  l: link  q/Esc: quit",
+            "↑/↓: select  Enter: details  c: create  i: import key  I: import file  d: delete  p: private key  l: link  q/Esc: quit",
         ),
     ]))
     .block(Block::default().borders(Borders::ALL));
@@ -1324,6 +1369,11 @@ fn render_input_popup(frame: &mut Frame<'_>, app: &App) {
             "Import wallet",
             "Private key / secret key",
             "*".repeat(app.input.chars().count()),
+        ),
+        View::ImportWalletFilePath => (
+            "Import wallets from file",
+            "JSON file path",
+            app.input.clone(),
         ),
         View::AddFundingName => ("Add funds", "Funding name", app.input.clone()),
         View::AddFundingOutpoint => ("Add funds", "Outpoint (txid:vout)", app.input.clone()),

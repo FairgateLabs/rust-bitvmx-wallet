@@ -18,7 +18,7 @@ use protocol_builder::{
 };
 
 use serde_json::Value;
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, fs, path::Path, rc::Rc};
 use storage_backend::storage::{KeyValueStore, Storage};
 use tracing::{error, info};
 
@@ -234,6 +234,12 @@ impl ClassicWallet {
         identifier: &str,
         secret_key: &str,
     ) -> Result<(), ClassicWalletError> {
+        if identifier.trim().is_empty() {
+            return Err(ClassicWalletError::KeyNotFound(
+                "Invalid identifier".to_string(),
+            ));
+        }
+
         let key = StoreKey::ClassicWallet(identifier.to_string()).get_key();
 
         if self.store.has_key(&key, None)? {
@@ -250,6 +256,64 @@ impl ClassicWallet {
         self.store.set(key, wallet_pub_key, None)?;
 
         Ok(())
+    }
+
+    pub fn import_wallets_from_file<P: AsRef<Path>>(
+        &self,
+        path: P,
+    ) -> Result<Vec<(String, PublicKey)>, ClassicWalletError> {
+        let path = path.as_ref();
+        let contents = fs::read_to_string(path)?;
+        let json: Value = serde_json::from_str(&contents)?;
+
+        let keypairs = if let Some(bitcoin_keypairs) = json.get("bitcoin_keypairs") {
+            bitcoin_keypairs
+        } else if let Some(aggregated_keypairs) = json.get("aggregated_keypairs") {
+            aggregated_keypairs
+        } else {
+            return Err(ClassicWalletError::WrongImportFileFormat(
+                "expected `bitcoin_keypairs` or `aggregated_keypairs`".to_string(),
+            ));
+        };
+
+        let keypairs = keypairs.as_array().ok_or_else(|| {
+            ClassicWalletError::WrongImportFileFormat(
+                "keypairs field must be a JSON array".to_string(),
+            )
+        })?;
+
+        if keypairs.is_empty() {
+            return Err(ClassicWalletError::WrongImportFileFormat(
+                "keypairs array cannot be empty".to_string(),
+            ));
+        }
+
+        let file_stem = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .ok_or_else(|| {
+                ClassicWalletError::WrongImportFileFormat(
+                    "import file must have a valid UTF-8 file name".to_string(),
+                )
+            })?;
+
+        let mut imported = Vec::with_capacity(keypairs.len());
+        for (index, keypair) in keypairs.iter().enumerate() {
+            let private_key_wif = keypair
+                .get("private_key_wif")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    ClassicWalletError::WrongImportFileFormat(
+                        "keypair is missing `private_key_wif`".to_string(),
+                    )
+                })?;
+            let identifier = format!("{file_stem}_{}", index + 1);
+            self.create_wallet_from_secret(&identifier, private_key_wif)?;
+            let (pubkey, _) = self.export_wallet(&identifier)?;
+            imported.push((identifier, pubkey));
+        }
+
+        Ok(imported)
     }
 
     pub fn export_wallet(
@@ -989,11 +1053,16 @@ mod tests {
         Network,
     };
     use bitcoind::{bitcoind::Bitcoind, config::BitcoindConfig};
-    use std::{path::Path, str::FromStr, sync::Once};
+    use std::{
+        path::Path,
+        str::FromStr,
+        sync::{Mutex, Once},
+    };
     use tracing::info;
     use tracing_subscriber::EnvFilter;
 
     static INIT: Once = Once::new();
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     pub fn config_trace() {
         INIT.call_once(|| {
@@ -1055,6 +1124,85 @@ mod tests {
 
     fn create_test_wallet(wallet: &ClassicWallet, identifier: &str, key_type: BitcoinKeyType) {
         wallet.create_wallet(identifier, key_type).unwrap();
+    }
+
+    #[test]
+    fn test_import_wallets_from_bitcoin_keypairs_file() -> Result<(), anyhow::Error> {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let wallet = setup_wallet();
+        let file_path = format!(
+            "/tmp/test_wallet/import_bitcoin_{}.json",
+            generate_random_string()
+        );
+        std::fs::create_dir_all("/tmp/test_wallet")?;
+        std::fs::write(
+            &file_path,
+            r#"{
+                "bitcoin_keypairs": [
+                    { "private_key_wif": "cVjBRj4p8cEMxRdLaW6ZoDFPCiypXAznpWxJxJSvQkRh2L9m26GY" },
+                    { "private_key_wif": "cUXZDQeWid6jkDmqFSuQJMbEmNpFcfdDUKDG1KtvYBtYtVo1evKL" }
+                ]
+            }"#,
+        )?;
+
+        let file_stem = Path::new(&file_path).file_stem().unwrap().to_str().unwrap();
+        let imported = wallet.import_wallets_from_file(&file_path)?;
+
+        assert_eq!(imported.len(), 2);
+        assert_eq!(imported[0].0, format!("{file_stem}_1"));
+        assert_eq!(imported[1].0, format!("{file_stem}_2"));
+        assert_eq!(wallet.get_wallets()?.len(), 2);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_import_wallets_from_aggregated_keypairs_file() -> Result<(), anyhow::Error> {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let wallet = setup_wallet();
+        let file_path = format!(
+            "/tmp/test_wallet/import_aggregated_{}.json",
+            generate_random_string()
+        );
+        std::fs::create_dir_all("/tmp/test_wallet")?;
+        std::fs::write(
+            &file_path,
+            r#"{
+                "aggregated_keypairs": [
+                    { "private_key_wif": "cVA5kKTHY4dKH3tXJgq2csv4GheqzM2JNfGpZCMFGRnSEY7sHFQM" }
+                ]
+            }"#,
+        )?;
+
+        let file_stem = Path::new(&file_path).file_stem().unwrap().to_str().unwrap();
+        let imported = wallet.import_wallets_from_file(&file_path)?;
+
+        assert_eq!(imported.len(), 1);
+        assert_eq!(imported[0].0, format!("{file_stem}_1"));
+        assert_eq!(wallet.get_wallets()?.len(), 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_import_wallets_from_wrong_format_file() -> Result<(), anyhow::Error> {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let wallet = setup_wallet();
+        let file_path = format!(
+            "/tmp/test_wallet/import_wrong_{}.json",
+            generate_random_string()
+        );
+        std::fs::create_dir_all("/tmp/test_wallet")?;
+        std::fs::write(&file_path, r#"{ "rsa_keypairs": [] }"#)?;
+
+        let result = wallet.import_wallets_from_file(&file_path);
+
+        assert!(matches!(
+            result,
+            Err(ClassicWalletError::WrongImportFileFormat(_))
+        ));
+
+        Ok(())
     }
 
     #[test]

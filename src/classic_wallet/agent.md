@@ -20,7 +20,7 @@ This directory contains the older/simple wallet implementation for this crate. T
 It can:
 
 - create wallets by deriving keys (`create_wallet`),
-- import/export wallets from secret/private keys,
+- import/export wallets from secret/private keys, including batch imports from key-manager JSON files,
 - import partial private keys and store the aggregated public key,
 - manually register/remove/list UTXOs as named funding entries,
 - auto-discover mainnet/testnet wallet UTXOs from mempool.space as `auto_[n]` funding entries,
@@ -71,6 +71,7 @@ Current TUI behavior:
   - `Enter` opens wallet details.
   - `c` creates a wallet using `BitcoinKeyType::P2wpkh`.
   - `i` imports a private/secret key; private-key input is masked.
+  - `I` imports wallets from a key-manager JSON file (`bitcoin_keypairs` or `aggregated_keypairs`).
   - `d` deletes the selected wallet after `y`/`n` confirmation.
   - `p` displays the selected wallet private key in a warning popup.
   - `r` refreshes; `q`/`Esc` quits.
@@ -97,6 +98,7 @@ Classic wallet APIs added for the TUI include:
 - `is_regtest` — gates regtest-only UI features.
 - `is_testnet` and `is_mainnet` — gate network-specific mempool.space features.
 - `auto_discover_funds` — fetches mempool.space UTXOs for a wallet address and adds unseen outpoints as `auto_[n]` funding entries on testnet/mainnet.
+- `import_wallets_from_file` — imports `private_key_wif` entries from key-manager JSON files and names wallets as `{file_stem}_{n}`.
 - `list_pending_transfers` — exposes pending transfer status for display.
 - `is_transfer_mined` and `confirm_transfer_if_mined` — check RPC confirmation state and confirm local state when mined.
 

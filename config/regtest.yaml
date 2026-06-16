@@ -9,16 +9,16 @@ key_manager:
   network: regtest
   
 key_storage:
-  password: secret_password_123_ABC
-  path: /tmp/regtest/wallet/keys.db
+  password: SeCrEt_p4ssw0rd_123!
+  path: db/regtest/wallet/keys.db
 
 storage:
   # Stores wallet metadata used by WalletManager (names, pubkeys, indexes).
-  path: /tmp/regtest/wallet/storage.db
+  path: db/regtest/wallet/storage.db
 
 wallet:
   # Base path for BDK wallet database files
-  db_path: /tmp/regtest/wallet/wallet.db
+  db_path: db/regtest/wallet/wallet.db
   # optional start block to sync the wallet, default is 0
   start_height: 0
   # optional receive private key used in Wallet::from_config option

@@ -9,14 +9,14 @@ key_manager:
   network: testnet
 
 key_storage:
-  password: secret_password_123_ABC
-  path: /tmp/testnet/wallet/keys.db
+  password: SeCrEt_p4ssw0rd_123!
+  path: db/testnet/wallet/keys.db
 
 storage:
   # Stores wallet metadata used by WalletManager (names, pubkeys, indexes).
-  path: /tmp/testnet/wallet/storage.db
+  path: db/testnet/wallet/storage.db
 
 wallet:
   # Base path for BDK wallet database files
-  db_path: /tmp/testnet/wallet/wallet.db
+  db_path: db/testnet/wallet/wallet.db
   start_height: 4734673

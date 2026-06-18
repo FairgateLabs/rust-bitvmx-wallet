@@ -106,7 +106,16 @@ impl ClassicWallet {
     }
 
     pub fn is_testnet(&self) -> bool {
-        self.network == network::Network::Testnet
+        self.network == network::Network::Testnet || self.network == network::Network::Testnet4
+    }
+
+    pub fn mempool_space_base_url(&self) -> Option<&'static str> {
+        match self.network {
+            network::Network::Bitcoin => Some("https://mempool.space"),
+            network::Network::Testnet => Some("https://mempool.space/testnet"),
+            network::Network::Testnet4 => Some("https://mempool.space/testnet4"),
+            _ => None,
+        }
     }
 
     pub fn is_mainnet(&self) -> bool {
@@ -124,16 +133,12 @@ impl ClassicWallet {
             .ok_or(ClassicWalletError::KeyNotFound(identifier.to_string()))?;
         let address = self.public_key_to_bech32_address(&pubkey)?;
 
-        let base_url = match self.network {
-            network::Network::Bitcoin => "https://mempool.space/api",
-            network::Network::Testnet => "https://mempool.space/testnet/api",
-            _ => {
-                return Err(ClassicWalletError::MempoolApiError(
-                    "auto-discover is only available on mainnet and testnet".to_string(),
-                ))
-            }
-        };
-        let url = format!("{base_url}/address/{address}/utxo");
+        let base_url = self.mempool_space_base_url().ok_or_else(|| {
+            ClassicWalletError::MempoolApiError(
+                "auto-discover is only available on mainnet and testnet".to_string(),
+            )
+        })?;
+        let url = format!("{base_url}/api/address/{address}/utxo");
         let response = reqwest::blocking::get(&url)?.error_for_status()?.text()?;
         let utxos: Value = serde_json::from_str(&response)?;
         let utxos = utxos.as_array().ok_or_else(|| {

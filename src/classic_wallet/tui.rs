@@ -82,6 +82,7 @@ struct App {
     is_regtest: bool,
     is_testnet: bool,
     is_mainnet: bool,
+    mempool_space_base_url: Option<String>,
     link: String,
 }
 
@@ -107,6 +108,7 @@ impl App {
             is_regtest: wallet.is_regtest(),
             is_testnet: wallet.is_testnet(),
             is_mainnet: wallet.is_mainnet(),
+            mempool_space_base_url: wallet.mempool_space_base_url().map(str::to_string),
             link: String::new(),
         };
         app.refresh_wallets(wallet);
@@ -359,10 +361,10 @@ impl App {
     }
 
     fn show_selected_wallet_link(&mut self) {
-        if !self.is_testnet {
-            self.status = "Mempool links are only available on testnet".to_string();
+        let Some(base_url) = self.mempool_space_base_url.clone() else {
+            self.status = "Mempool links are only available on mainnet and testnet".to_string();
             return;
-        }
+        };
 
         let Some((wallet_name, address)) = self
             .selected_wallet()
@@ -372,16 +374,16 @@ impl App {
             return;
         };
 
-        self.link = format!("https://mempool.space/testnet/address/{address}");
+        self.link = format!("{base_url}/address/{address}");
         self.view = View::ShowLink;
         self.status = format!("Mempool address link for {wallet_name}");
     }
 
     fn show_selected_fund_link(&mut self) {
-        if !self.is_testnet {
-            self.status = "Mempool links are only available on testnet".to_string();
+        let Some(base_url) = self.mempool_space_base_url.clone() else {
+            self.status = "Mempool links are only available on mainnet and testnet".to_string();
             return;
-        }
+        };
 
         let Some((funding_id, txid, vout)) = self.selected_fund().map(|fund| {
             (
@@ -394,7 +396,7 @@ impl App {
             return;
         };
 
-        self.link = format!("https://mempool.space/testnet/tx/{txid}#flow=&vout={vout}");
+        self.link = format!("{base_url}/tx/{txid}#flow=&vout={vout}");
         self.view = View::ShowLink;
         self.status = format!("Mempool transaction output link for '{funding_id}'");
     }
@@ -1696,7 +1698,7 @@ fn render_link_popup(frame: &mut Frame<'_>, app: &App) {
         ])
         .split(inner);
 
-    frame.render_widget(Paragraph::new("Testnet mempool.space link:"), chunks[0]);
+    frame.render_widget(Paragraph::new("mempool.space link:"), chunks[0]);
     frame.render_widget(
         Paragraph::new(format!(" {}", app.link))
             .style(Style::default().fg(Color::Green))

@@ -25,7 +25,7 @@
 //!     #     url: Secret::new("http://localhost:18443".to_string()),
 //!     #     username: Secret::new("foo".to_string()),
 //!     #     password: Secret::new("rpcpassword".to_string()),
-//!     #     network: Network::Regtest,
+//!     #     network_flavor: bitcoin::Network::Regtest.into(),
 //!     #     wallet: "test_wallet".to_string(),
 //!     # };
 //!     # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
@@ -61,7 +61,10 @@ use bitcoin::{
     Transaction, Txid,
 };
 
-use bitvmx_bitcoin_rpc::{reqwest_https::ReqwestHttpsTransport, rpc_config::RpcConfig};
+use bitvmx_bitcoin_rpc::{
+    reqwest_https::ReqwestHttpsTransport,
+    rpc_config::{NetworkFlavor, RpcConfig},
+};
 use key_manager::{key_manager::KeyManager, key_type::BitcoinKeyType};
 use tracing::{debug, error, info, trace};
 
@@ -118,7 +121,7 @@ use std::{
 ///     #     url: Secret::new("http://localhost:18443".to_string()),
 ///     #     username: Secret::new("foo".to_string()),
 ///     #     password: Secret::new("rpcpassword".to_string()),
-///     #     network: Network::Regtest,
+///     #     network_flavor: bitcoin::Network::Regtest.into(),
 ///     #     wallet: "test_wallet".to_string(),
 ///     # };
 ///     # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
@@ -153,7 +156,17 @@ use std::{
 /// ```
 pub struct Wallet {
     /// The Bitcoin network this wallet operates on (mainnet, testnet, or regtest).
+    ///
+    /// A simchain wallet reports `Regtest` here, which is correct for addresses, keys
+    /// and chain magic — everything this type does with a network.
     pub network: bitcoin::Network,
+
+    /// Which chain it *actually* is, including simnets.
+    ///
+    /// Private and consulted only by [`RegtestWallet::check_network`]: simchain
+    /// encodes as regtest but its blocks are produced externally and its node has no
+    /// wallet, so `mine()` and `fund()` must refuse. Nothing else needs to know.
+    network_flavor: NetworkFlavor,
 
     /// RPC client for communicating with the Bitcoin Core node.
     pub rpc_client: Arc<Client>,
@@ -220,7 +233,7 @@ impl Wallet {
     /// #     url: Secret::new("http://localhost:18443".to_string()),
     /// #     username: Secret::new("foo".to_string()),
     /// #     password: Secret::new("rpcpassword".to_string()),
-    /// #     network: bitcoin::Network::Regtest,
+    /// #     network_flavor: bitcoin::Network::Regtest.into(),
     /// #     wallet: "test_wallet".to_string(),
     /// # };
     /// let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
@@ -301,7 +314,7 @@ impl Wallet {
     /// #     url: Secret::new("http://localhost:18443".to_string()),
     /// #     username: Secret::new("foo".to_string()),
     /// #     password: Secret::new("rpcpassword".to_string()),
-    /// #     network: bitcoin::Network::Regtest,
+    /// #     network_flavor: bitcoin::Network::Regtest.into(),
     /// #     wallet: "test_wallet".to_string(),
     /// # };
     /// # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
@@ -384,7 +397,7 @@ impl Wallet {
     /// #     url: Secret::new("http://localhost:18443".to_string()),
     /// #     username: Secret::new("foo".to_string()),
     /// #     password: Secret::new("rpcpassword".to_string()),
-    /// #     network: bitcoin::Network::Regtest,
+    /// #     network_flavor: bitcoin::Network::Regtest.into(),
     /// #     wallet: "test_wallet".to_string(),
     /// # };
     /// # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
@@ -456,7 +469,7 @@ impl Wallet {
     /// #     url: Secret::new("http://localhost:18443".to_string()),
     /// #     username: Secret::new("foo".to_string()),
     /// #     password: Secret::new("rpcpassword".to_string()),
-    /// #     network: bitcoin::Network::Regtest,
+    /// #     network_flavor: bitcoin::Network::Regtest.into(),
     /// #     wallet: "test_wallet".to_string(),
     /// # };
     /// # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
@@ -526,7 +539,7 @@ impl Wallet {
     /// #     url: Secret::new("http://localhost:18443".to_string()),
     /// #     username: Secret::new("foo".to_string()),
     /// #     password: Secret::new("rpcpassword".to_string()),
-    /// #     network: bitcoin::Network::Regtest,
+    /// #     network_flavor: bitcoin::Network::Regtest.into(),
     /// #     wallet: "test_wallet".to_string(),
     /// # };
     /// # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
@@ -558,10 +571,10 @@ impl Wallet {
         }
         let aggregated_public_key = if partial_private_keys.iter().all(|key| key.len() == 64) {
             key_manager
-                .import_partial_secret_keys(partial_private_keys.into(), bitcoin_config.network)?
+                .import_partial_secret_keys(partial_private_keys.into(), bitcoin_config.network())?
         } else if partial_private_keys.iter().all(|key| key.len() == 52) {
             key_manager
-                .import_partial_private_keys(partial_private_keys.into(), bitcoin_config.network)?
+                .import_partial_private_keys(partial_private_keys.into(), bitcoin_config.network())?
         } else {
             error!("Invalid partial private keys provided");
             return Err(WalletError::InvalidPartialPrivateKeys);
@@ -620,7 +633,7 @@ impl Wallet {
     /// #     url: Secret::new("http://localhost:18443".to_string()),
     /// #     username: Secret::new("foo".to_string()),
     /// #     password: Secret::new("rpcpassword".to_string()),
-    /// #     network: bitcoin::Network::Regtest,
+    /// #     network_flavor: bitcoin::Network::Regtest.into(),
     /// #     wallet: "test_wallet".to_string(),
     /// # };
     /// # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
@@ -685,7 +698,7 @@ impl Wallet {
         // Get or create a wallet with initial data read from rusqlite database.
         let bdk_wallet = Self::init_bdk_wallet(
             &mut conn,
-            bitcoin_config.network,
+            bitcoin_config.network(),
             descriptor,
             change_descriptor,
         )?;
@@ -693,12 +706,13 @@ impl Wallet {
         let name = wallet_name_from_descriptor(
             descriptor,
             change_descriptor,
-            bitcoin_config.network,
+            bitcoin_config.network(),
             bdk_wallet.secp_ctx(),
         )?;
 
         Ok(Self {
-            network: bitcoin_config.network,
+            network: bitcoin_config.network(),
+            network_flavor: bitcoin_config.network_flavor,
             rpc_client,
             bdk_wallet,
             name,
@@ -771,7 +785,7 @@ impl Wallet {
     /// #     url: Secret::new("http://localhost:18443".to_string()),
     /// #     username: Secret::new("foo".to_string()),
     /// #     password: Secret::new("rpcpassword".to_string()),
-    /// #     network: bitcoin::Network::Regtest,
+    /// #     network_flavor: bitcoin::Network::Regtest.into(),
     /// #     wallet: "test_wallet".to_string(),
     /// # };
     /// # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
@@ -808,7 +822,7 @@ impl Wallet {
     /// #     url: Secret::new("http://localhost:18443".to_string()),
     /// #     username: Secret::new("foo".to_string()),
     /// #     password: Secret::new("rpcpassword".to_string()),
-    /// #     network: bitcoin::Network::Regtest,
+    /// #     network_flavor: bitcoin::Network::Regtest.into(),
     /// #     wallet: "test_wallet".to_string(),
     /// # };
     /// # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
@@ -851,7 +865,7 @@ impl Wallet {
     /// #     url: Secret::new("http://localhost:18443".to_string()),
     /// #     username: Secret::new("foo".to_string()),
     /// #     password: Secret::new("rpcpassword".to_string()),
-    /// #     network: bitcoin::Network::Regtest,
+    /// #     network_flavor: bitcoin::Network::Regtest.into(),
     /// #     wallet: "test_wallet".to_string(),
     /// # };
     /// # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
@@ -989,7 +1003,7 @@ impl Wallet {
     /// #     url: Secret::new("http://localhost:18443".to_string()),
     /// #     username: Secret::new("foo".to_string()),
     /// #     password: Secret::new("rpcpassword".to_string()),
-    /// #     network: bitcoin::Network::Regtest,
+    /// #     network_flavor: bitcoin::Network::Regtest.into(),
     /// #     wallet: "test_wallet".to_string(),
     /// # };
     /// # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
@@ -1112,7 +1126,7 @@ impl Wallet {
     /// #     url: Secret::new("http://localhost:18443".to_string()),
     /// #     username: Secret::new("foo".to_string()),
     /// #     password: Secret::new("rpcpassword".to_string()),
-    /// #     network: bitcoin::Network::Regtest,
+    /// #     network_flavor: bitcoin::Network::Regtest.into(),
     /// #     wallet: "test_wallet".to_string(),
     /// # };
     /// # let wallet_config = WalletConfig::new("/tmp/wallet.db".to_string(), None, None, None)?;
@@ -1438,6 +1452,14 @@ impl RegtestWallet for Wallet {
             use crate::wallet::errors::WalletError;
 
             return Err(WalletError::RegtestOnly);
+        }
+        // Simchain is `Network::Regtest`, so the check above waves it through. Its
+        // blocks are mined externally and node1 runs with `-disablewallet`; worse,
+        // `generatetoaddress` is a mining RPC rather than a wallet one, so the node
+        // would happily serve `mine()` and silently produce a real block on a chain
+        // that is supposed to be mining itself.
+        if self.network_flavor.is_simchain() {
+            return Err(WalletError::NotAllowedOnSimchain);
         }
         Ok(())
     }

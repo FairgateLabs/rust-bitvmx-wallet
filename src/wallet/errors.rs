@@ -72,6 +72,18 @@ pub enum WalletError {
     #[error("This function is only available in regtest mode")]
     RegtestOnly,
 
+    /// Regtest-only operation attempted against a simchain simnet.
+    ///
+    /// Distinct from [`WalletError::RegtestOnly`]: simchain *is* regtest, so this is
+    /// not a misconfigured network. Its blocks are produced externally and its
+    /// user-facing node has no wallet, so minting blocks or funds from here would
+    /// defeat the point of testing against an autonomous chain.
+    #[error(
+        "This function is not available on simchain: blocks are mined externally \
+         and node1 has no wallet"
+    )]
+    NotAllowedOnSimchain,
+
     /// Thread panic error.
     ///
     /// Occurs when a background thread panics during wallet operations.

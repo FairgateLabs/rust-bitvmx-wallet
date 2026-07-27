@@ -187,12 +187,15 @@ println!("Transaction outputs: {}", tx.output.len());
 use bitvmx_wallet::wallet::Wallet;
 use bitvmx_bitcoin_rpc::rpc_config::RpcConfig;
 
-let bitcoin_config = RpcConfig {
-    url: "http://localhost:18443".to_string(),
-    username: "foo".to_string(),
-    password: "rpcpassword".to_string(),
-    network: bitcoin::Network::Regtest,
-};
+// Use the constructor: the struct's fields are `Secret`-wrapped, and `network`
+// accepts either a `bitcoin::Network` or a `NetworkFlavor` (e.g. simchain).
+let bitcoin_config = RpcConfig::new(
+    bitcoin::Network::Regtest,
+    "http://localhost:18443".to_string(),
+    "foo".to_string(),
+    "rpcpassword".to_string(),
+    "test_wallet".to_string(),
+);
 
 let wallet_config = WalletConfig::new(
     "/tmp/wallet.db".to_string(),

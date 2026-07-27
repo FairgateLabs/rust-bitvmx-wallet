@@ -82,7 +82,7 @@ impl ClassicWallet {
             None
         };
 
-        let regtest_address = if network::Network::Regtest == config.bitcoin.network {
+        let regtest_address = if network::Network::Regtest == config.bitcoin.network() {
             if let Some(bitcoin_client) = &bitcoin_client {
                 Some(bitcoin_client.init_wallet(&config.bitcoin.wallet).unwrap())
             } else {
@@ -95,7 +95,7 @@ impl ClassicWallet {
         Ok(Self {
             store: storage,
             key_manager,
-            network: config.bitcoin.network,
+            network: config.bitcoin.network(),
             bitcoin_client,
             regtest_address,
         })

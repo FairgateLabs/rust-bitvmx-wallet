@@ -147,7 +147,7 @@ impl Config {
     /// #     url: Secret::new("http://localhost:18443".to_string()),
     /// #     username: Secret::new("foo".to_string()),
     /// #     password: Secret::new("rpcpassword".to_string()),
-    /// #     network: Network::Regtest,
+    /// #     network_flavor: bitcoin::Network::Regtest.into(),
     /// #     wallet: "test_wallet".to_string(),
     /// # };
     /// # // Note: These configs must be provided - typically loaded from YAML file

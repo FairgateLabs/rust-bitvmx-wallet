@@ -1,7 +1,6 @@
 /target
 
 /config/.env
-Cargo.lock
 
 .DS_Store
 .vscode

@@ -61,7 +61,7 @@ jobs:
           echo '<meta http-equiv="refresh" content="0;url='"$PACKAGE_NAME"'/index.html">' > target/doc/index.html
 
       - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

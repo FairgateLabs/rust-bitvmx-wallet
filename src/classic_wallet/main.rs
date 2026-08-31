@@ -51,12 +51,10 @@ fn main() {
     let ui_mode = cfg!(feature = "ui") && matches_ui_command(&cli.command);
     config_trace_aux(ui_mode);
 
-    let init_client = match &cli.command {
-        Commands::BtcToSat { .. }
-        | Commands::AutoDiscover { .. }
-        | Commands::ImportFromFile { .. } => false,
-        _ => true,
-    };
+    let init_client = !matches!(
+        &cli.command,
+        Commands::BtcToSat { .. } | Commands::AutoDiscover { .. } | Commands::ImportFromFile { .. }
+    );
 
     let wallet = match ClassicWallet::new(config, init_client) {
         Ok(w) => w,
@@ -161,7 +159,7 @@ fn main() {
                 identifier,
                 funding_id,
                 to_pubkey,
-                &amount,
+                amount,
                 *fee,
                 *output_is_taproot,
                 *confirm,

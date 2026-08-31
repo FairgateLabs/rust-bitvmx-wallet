@@ -221,7 +221,7 @@ impl ClassicWallet {
         let index = self.get_wallet_index()?;
         let public = self.key_manager.derive_keypair(key_type, index)?;
 
-        self.store.set(key, public.clone(), None)?;
+        self.store.set(key, public, None)?;
 
         Ok(public)
     }
@@ -636,7 +636,7 @@ impl ClassicWallet {
         let mut protocol = Protocol::new("merge_utxos");
         for (i, (_, (origin_pubkey, outpoint, origin_amount))) in funding_data.iter().enumerate() {
             info!("Public key: {origin_pubkey}");
-            let external_output = OutputType::segwit_key(*origin_amount, &origin_pubkey)?;
+            let external_output = OutputType::segwit_key(*origin_amount, origin_pubkey)?;
             info!("External output: {:?}", external_output);
 
             let transaction_name = format!("origin{i}");
@@ -674,12 +674,13 @@ impl ClassicWallet {
         Ok(result)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn fund_address(
         &self,
         identifier: &str,
         funding_id: &str,
         to_pubkey: PublicKey,
-        amount: &Vec<u64>,
+        amount: &[u64],
         fee: u64,
         output_is_taproot: bool,
         auto_confirm: bool,
@@ -902,13 +903,14 @@ impl ClassicWallet {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn create_transfer_transaction(
         &self,
         outpoint: OutPoint,
         origin_amount: u64,
         origin_pubkey: PublicKey,
         to_pubkey: PublicKey,
-        amount: &Vec<u64>,
+        amount: &[u64],
         fee: u64,
         output_is_taproot: bool,
         spending_scripts: Option<Vec<Vec<ProtocolScript>>>,

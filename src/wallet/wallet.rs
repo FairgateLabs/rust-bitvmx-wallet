@@ -647,7 +647,7 @@ impl Wallet {
         // Create a Bitcoin RPC client
         let transport = if !bitcoin_config.username.expose_secret().is_empty() {
             ReqwestHttpsTransport::builder()
-                .url(&bitcoin_config.url.expose_secret())
+                .url(bitcoin_config.url.expose_secret())
                 .map_err(|e| {
                     WalletError::URLError(
                         bitcoin_config.url.expose_secret().to_owned(),
@@ -661,7 +661,7 @@ impl Wallet {
                 .build()
         } else {
             ReqwestHttpsTransport::builder()
-                .url(&bitcoin_config.url.expose_secret())
+                .url(bitcoin_config.url.expose_secret())
                 .map_err(|e| {
                     WalletError::URLError(
                         bitcoin_config.url.expose_secret().to_owned(),
@@ -1272,7 +1272,7 @@ impl Wallet {
         let mut emitter = self.create_emitter();
         let mut blocks_received = 0_u64;
         while let Some(emission) = emitter.next_block()? {
-            if blocks_received % 10 == 0 && blocks_received > 0 {
+            if blocks_received.is_multiple_of(10) && blocks_received > 0 {
                 info!(
                     "Synced {} blocks so far.... Current block {}",
                     blocks_received,

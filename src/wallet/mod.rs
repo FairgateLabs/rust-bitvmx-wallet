@@ -3,6 +3,7 @@ pub mod config;
 pub mod errors;
 pub mod types;
 pub mod utils;
+#[allow(clippy::module_inception)]
 pub mod wallet;
 pub mod wallet_manager;
 

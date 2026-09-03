@@ -693,7 +693,7 @@ impl Wallet {
         let name = wallet_name_from_descriptor(
             descriptor,
             change_descriptor,
-            bitcoin_config.network,
+            bitcoin_config.network.into(),
             bdk_wallet.secp_ctx(),
         )?;
 
@@ -1193,7 +1193,15 @@ impl Wallet {
     }
 
     pub fn cancel_tx(&mut self, tx: &Transaction) -> Result<(), WalletError> {
-        self.bdk_wallet.cancel_tx(tx);
+        // https://github.com/bitcoindevkit/bdk_wallet/issues/212
+        for txout in &tx.output {
+            if let Some((keychain, index)) = self
+                .bdk_wallet
+                .derivation_of_spk(txout.script_pubkey.clone())
+            {
+                self.bdk_wallet.unmark_used(keychain, index);
+            }
+        }
         self.persist_wallet()?;
         Ok(())
     }

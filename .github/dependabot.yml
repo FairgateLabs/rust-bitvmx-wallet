@@ -8,9 +8,6 @@ updates:
     open-pull-requests-limit: 10
     cooldown:
       default-days: 10
-    ignore:
-      - dependency-name: "bdk_wallet"
-        versions: ["> 2.4.0"]
 
   - package-ecosystem: "github-actions"
     directory: "/"

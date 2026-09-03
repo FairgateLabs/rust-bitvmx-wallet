@@ -368,9 +368,9 @@ dependencies = [
 
 [[package]]
 name = "bdk_wallet"
-version = "2.4.0"
+version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c99821af39c7df004bd411ece2ef22d9fba5a631b4489f3d9a0ac0d19637e2d0"
+checksum = "1284fb23acc3e3022673712b55f4d5ce7e38aadc2c49bbef830dc3935f0a3289"
 dependencies = [
  "bdk_chain",
  "bitcoin 0.32.102",
@@ -655,7 +655,7 @@ dependencies = [
 [[package]]
 name = "bitvmx-key-manager"
 version = "0.8.4"
-source = "git+https://github.com/FairgateLabs/rust-bitvmx-key-manager.git?tag=v0.8.4#9e3eac963509bdda4a6afd04ba03ed469c85bda1"
+source = "git+https://github.com/FairgateLabs/rust-bitvmx-key-manager.git?tag=v0.8.4#f3a2c572007b493dec9e30028e7c57516d6b5e1b"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -687,7 +687,7 @@ dependencies = [
 [[package]]
 name = "bitvmx-protocol-builder"
 version = "0.8.4"
-source = "git+https://github.com/FairgateLabs/rust-bitvmx-protocol-builder.git?tag=v0.8.4#4c3c97fa5b855faefcc3ba7c0bea26006e773afd"
+source = "git+https://github.com/FairgateLabs/rust-bitvmx-protocol-builder.git?tag=v0.8.4#197cdcf4ace800ae7d76d26581a9d8963a35f358"
 dependencies = [
  "anyhow",
  "bitcoin 0.32.102",
@@ -3591,9 +3591,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-proto"
-version = "0.11.16"
+version = "0.11.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f4bfc015262b9df63c8845072ce59068853ff5872180c2ce2f13038b970e560"
+checksum = "04759210543be93709136e28212294a659ef5001836ff4eab4d663e4529bba83"
 dependencies = [
  "aws-lc-rs",
  "bytes",
@@ -5269,9 +5269,9 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.24.0"
+version = "1.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf3923a6f5c4c6382e0b653c4117f48d631ea17f38ed86e2a828e6f7412f5239"
+checksum = "2cefc03fd367c0c6d4305de1b312cf00248c4114f4a0418ce6a6af769e3b0bd9"
 dependencies = [
  "atomic",
  "getrandom 0.4.3",
@@ -5697,9 +5697,9 @@ dependencies = [
 
 [[package]]
 name = "yaml-rust2"
-version = "0.11.0"
+version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "631a50d867fafb7093e709d75aaee9e0e0d5deb934021fcea25ac2fe09edc51e"
+checksum = "b36710ce3a279cfce8465dbab826f161675a262950b922cb2c3663852dfe9eb0"
 dependencies = [
  "arraydeque",
  "encoding_rs",
@@ -5815,9 +5815,9 @@ dependencies = [
 
 [[package]]
 name = "zerovec-derive"
-version = "0.11.4"
+version = "0.11.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47402523226a02bfe5230160dc3ccc089aa6f6f19e7fcbb4e6f824bbb1b4aa62"
+checksum = "9f212a141d820099d57ffafb9569be9617a6f27d3dc881fbee8fb56642f917a9"
 dependencies = [
  "proc-macro2",
  "quote",

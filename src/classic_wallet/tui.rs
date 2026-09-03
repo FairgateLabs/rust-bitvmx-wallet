@@ -773,7 +773,7 @@ impl App {
             &wallet_name,
             &fund.funding_id,
             to_pubkey,
-            &vec![self.transfer_amount],
+            &[self.transfer_amount],
             self.transfer_fee,
             false,
             false,

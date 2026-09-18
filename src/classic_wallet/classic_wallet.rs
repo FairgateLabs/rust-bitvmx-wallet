@@ -50,15 +50,15 @@ impl StoreKey {
     pub fn get_key(&self) -> String {
         let base = "wallet";
         match self {
-            Self::ClassicWallet(identifier) => format!("{base}/name/{identifier}"),
+            Self::ClassicWallet(identifier) => format!("{base}/record/{identifier}"),
             Self::Funding(identifier, funding_id) => {
-                format!("{base}/{identifier}/funding/{funding_id}")
+                format!("{base}/funding/{identifier}/{funding_id}")
             }
             Self::PendingTransfer(identifier, funding_id) => {
-                format!("{base}/{identifier}/transfers/{funding_id}")
+                format!("{base}/transfer/{identifier}/{funding_id}")
             }
             Self::PendingTransferDestinations(identifier, funding_id) => {
-                format!("{base}/{identifier}/transfer-destinations/{funding_id}")
+                format!("{base}/transfer_destination/{identifier}/{funding_id}")
             }
             Self::CreateWalletIndex => format!("{base}/index"),
         }

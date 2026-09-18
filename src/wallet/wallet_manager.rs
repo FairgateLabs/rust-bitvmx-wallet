@@ -70,7 +70,7 @@ impl StoreKey {
     pub fn get_key(&self) -> String {
         let base = "wallet";
         match self {
-            Self::Wallet(identifier) => format!("{base}/name/{identifier}"),
+            Self::Wallet(identifier) => format!("{base}/record/{identifier}"),
             Self::CreateWalletIndex => format!("{base}/index"),
         }
     }
@@ -80,12 +80,19 @@ impl StoreKey {
     /// # Returns
     ///
     /// A string path to the SQLite database file.
-    pub fn db_path(&self, config: &Config) -> String {
-        // Builds a wallet-specific database path using the base path from the config
-        // and a deterministic identifier (key). This avoids collisions when multiple
-        // wallets are created from the same configuration.
+    pub fn db_dir(&self, config: &Config) -> String {
+        // Builds a wallet-specific database path from the base path in the config and
+        // the wallet identifier. This avoids collisions when multiple wallets are
+        // created from the same configuration.
+        //
+        // Deliberately independent of `get_key()`: storage keys follow the shared
+        // `<component>/<entity>/<id>` convention and are free to change, and a rename
+        // there must never relocate a database on disk.
         let base = config.wallet.db_path.trim_end_matches('/');
-        format!("{}/{}.db", base, self.get_key())
+        match self {
+            Self::Wallet(identifier) => format!("{base}/wallet_{identifier}.db"),
+            Self::CreateWalletIndex => format!("{base}/index.db"),
+        }
     }
 }
 
@@ -271,7 +278,7 @@ impl WalletManager {
         }
 
         let mut config_wallet = self.config.wallet.clone();
-        config_wallet.db_path = store_key.db_path(&self.config);
+        config_wallet.db_path = store_key.db_dir(&self.config);
 
         let index = self.get_wallet_index()?;
         let wallet = Wallet::from_derive_keypair(
@@ -334,7 +341,7 @@ impl WalletManager {
         }
 
         let mut config_wallet = self.config.wallet.clone();
-        config_wallet.db_path = store_key.db_path(&self.config);
+        config_wallet.db_path = store_key.db_dir(&self.config);
 
         let wallet = Wallet::from_derive_keypair(
             self.config.bitcoin.clone(),
@@ -397,7 +404,7 @@ impl WalletManager {
         }
 
         let mut config_wallet = self.config.wallet.clone();
-        config_wallet.db_path = store_key.db_path(&self.config);
+        config_wallet.db_path = store_key.db_dir(&self.config);
 
         let wallet = Wallet::from_private_key(
             self.config.bitcoin.clone(),
@@ -469,7 +476,7 @@ impl WalletManager {
         }
 
         let mut config_wallet = self.config.wallet.clone();
-        config_wallet.db_path = store_key.db_path(&self.config);
+        config_wallet.db_path = store_key.db_dir(&self.config);
 
         let wallet = Wallet::from_partial_keys(
             self.config.bitcoin.clone(),
@@ -520,7 +527,7 @@ impl WalletManager {
         let pub_key: PublicKey = self.store.get(&key, None)?.unwrap();
 
         let mut config_wallet = self.config.wallet.clone();
-        config_wallet.db_path = store_key.db_path(&self.config);
+        config_wallet.db_path = store_key.db_dir(&self.config);
 
         Wallet::from_key_manager(
             self.config.bitcoin.clone(),
@@ -569,7 +576,7 @@ impl WalletManager {
             return Err(WalletError::KeyNotFound(key));
         }
         let mut config_wallet = self.config.wallet.clone();
-        config_wallet.db_path = store_key.db_path(&self.config);
+        config_wallet.db_path = store_key.db_dir(&self.config);
         info!("Clearing db at {}", config_wallet.db_path);
         Wallet::clear_db(&config_wallet)?;
 

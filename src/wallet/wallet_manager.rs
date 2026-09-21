@@ -46,7 +46,10 @@ use key_manager::{
     create_key_manager_from_config, key_manager::KeyManager, key_type::BitcoinKeyType,
 };
 use std::rc::Rc;
-use storage_backend::storage::{KeyValueStore, Storage};
+use storage_backend::{
+    key::StorageKey,
+    storage::{KeyValueStore, Storage},
+};
 use tracing::{error, info};
 
 /// Internal storage keys used by the wallet manager.
@@ -62,17 +65,31 @@ enum StoreKey {
 }
 
 impl StoreKey {
-    /// Generates the storage key string for this key type.
-    ///
-    /// # Returns
-    ///
-    /// A string representation of the storage key.
-    pub fn get_key(&self) -> String {
-        let base = "wallet";
+    fn wallet_key<'a>(
+        namespace: &[&str],
+        tail: impl IntoIterator<Item = &'a str>,
+    ) -> Result<StorageKey, WalletError> {
+        Ok(StorageKey::new(
+            std::iter::once("wallet")
+                .chain(namespace.iter().copied())
+                .map(str::to_string)
+                .chain(tail.into_iter().map(str::to_string)),
+        )?)
+    }
+
+    fn record_key<'a>(tail: impl IntoIterator<Item = &'a str>) -> Result<StorageKey, WalletError> {
+        Self::wallet_key(&["record"], tail)
+    }
+
+    pub fn get_key(&self) -> Result<StorageKey, WalletError> {
         match self {
-            Self::Wallet(identifier) => format!("{base}/name/{identifier}"),
-            Self::CreateWalletIndex => format!("{base}/index"),
+            Self::Wallet(identifier) => Self::record_key([identifier.as_str()]),
+            Self::CreateWalletIndex => Self::wallet_key(&["index"], []),
         }
+    }
+
+    pub fn wallet_scan_prefix() -> Result<String, WalletError> {
+        Ok(Self::record_key([])?.to_scan_prefix())
     }
 
     /// Generates the database path for this key type.
@@ -80,12 +97,19 @@ impl StoreKey {
     /// # Returns
     ///
     /// A string path to the SQLite database file.
-    pub fn db_path(&self, config: &Config) -> String {
-        // Builds a wallet-specific database path using the base path from the config
-        // and a deterministic identifier (key). This avoids collisions when multiple
-        // wallets are created from the same configuration.
+    pub fn db_dir(&self, config: &Config) -> String {
+        // Builds a wallet-specific database path from the base path in the config and
+        // the wallet identifier. This avoids collisions when multiple wallets are
+        // created from the same configuration.
+        //
+        // Deliberately independent of `get_key()`: storage keys follow the shared
+        // `<component>/<entity>/<id>` convention and are free to change, and a rename
+        // there must never relocate a database on disk.
         let base = config.wallet.db_path.trim_end_matches('/');
-        format!("{}/{}.db", base, self.get_key())
+        match self {
+            Self::Wallet(identifier) => format!("{base}/wallet_{identifier}.db"),
+            Self::CreateWalletIndex => format!("{base}/index.db"),
+        }
     }
 }
 
@@ -211,14 +235,14 @@ impl WalletManager {
     /// # }
     /// ```
     pub fn list_wallets(&self) -> Result<Vec<(String, PublicKey)>, WalletError> {
-        let key = StoreKey::Wallet(String::new()).get_key();
+        let prefix = StoreKey::wallet_scan_prefix()?;
         let mut wallets = Vec::new();
 
-        for identifier_key in self.store.partial_compare_keys(&key, None)? {
-            let identifier = identifier_key.strip_prefix(&key).unwrap().to_string();
+        for identifier_key in self.store.partial_compare_keys(&prefix, None)? {
+            let identifier = identifier_key.strip_prefix(&prefix).unwrap().to_string();
             let pubkey: PublicKey = self
                 .store
-                .get(&identifier_key, None)?
+                .get(StorageKey::from_joined(&identifier_key)?, None)?
                 .ok_or(WalletError::KeyNotFound(identifier_key))?;
 
             wallets.push((identifier, pubkey));
@@ -265,13 +289,13 @@ impl WalletManager {
         key_type: BitcoinKeyType,
     ) -> Result<Wallet, WalletError> {
         let store_key = StoreKey::Wallet(identifier.to_string());
-        let key = store_key.get_key();
-        if self.store.has_key(&key, None)? {
+        let key = store_key.get_key()?;
+        if self.store.has_key(key.clone(), None)? {
             return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
 
         let mut config_wallet = self.config.wallet.clone();
-        config_wallet.db_path = store_key.db_path(&self.config);
+        config_wallet.db_path = store_key.db_dir(&self.config);
 
         let index = self.get_wallet_index()?;
         let wallet = Wallet::from_derive_keypair(
@@ -328,13 +352,13 @@ impl WalletManager {
         index: u32,
     ) -> Result<Wallet, WalletError> {
         let store_key = StoreKey::Wallet(identifier.to_string());
-        let key = store_key.get_key();
-        if self.store.has_key(&key, None)? {
+        let key = store_key.get_key()?;
+        if self.store.has_key(key.clone(), None)? {
             return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
 
         let mut config_wallet = self.config.wallet.clone();
-        config_wallet.db_path = store_key.db_path(&self.config);
+        config_wallet.db_path = store_key.db_dir(&self.config);
 
         let wallet = Wallet::from_derive_keypair(
             self.config.bitcoin.clone(),
@@ -391,13 +415,13 @@ impl WalletManager {
         private_key: &str,
     ) -> Result<Wallet, WalletError> {
         let store_key = StoreKey::Wallet(identifier.to_string());
-        let key = store_key.get_key();
-        if self.store.has_key(&key, None)? {
+        let key = store_key.get_key()?;
+        if self.store.has_key(key.clone(), None)? {
             return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
 
         let mut config_wallet = self.config.wallet.clone();
-        config_wallet.db_path = store_key.db_path(&self.config);
+        config_wallet.db_path = store_key.db_dir(&self.config);
 
         let wallet = Wallet::from_private_key(
             self.config.bitcoin.clone(),
@@ -463,13 +487,13 @@ impl WalletManager {
         }
 
         let store_key = StoreKey::Wallet(identifier.to_string());
-        let key = store_key.get_key();
-        if self.store.has_key(&key, None)? {
+        let key = store_key.get_key()?;
+        if self.store.has_key(key.clone(), None)? {
             return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
 
         let mut config_wallet = self.config.wallet.clone();
-        config_wallet.db_path = store_key.db_path(&self.config);
+        config_wallet.db_path = store_key.db_dir(&self.config);
 
         let wallet = Wallet::from_partial_keys(
             self.config.bitcoin.clone(),
@@ -515,12 +539,12 @@ impl WalletManager {
             )));
         }
         let store_key = StoreKey::Wallet(identifier.to_string());
-        let key = store_key.get_key();
+        let key = store_key.get_key()?;
         info!("Loading wallet {identifier} with key {key}");
-        let pub_key: PublicKey = self.store.get(&key, None)?.unwrap();
+        let pub_key: PublicKey = self.store.get(key, None)?.unwrap();
 
         let mut config_wallet = self.config.wallet.clone();
-        config_wallet.db_path = store_key.db_path(&self.config);
+        config_wallet.db_path = store_key.db_dir(&self.config);
 
         Wallet::from_key_manager(
             self.config.bitcoin.clone(),
@@ -564,16 +588,16 @@ impl WalletManager {
         }
 
         let store_key = StoreKey::Wallet(identifier.to_string());
-        let key = store_key.get_key();
-        if !self.store.has_key(&key, None)? {
-            return Err(WalletError::KeyNotFound(key));
+        let key = store_key.get_key()?;
+        if !self.store.has_key(key.clone(), None)? {
+            return Err(WalletError::KeyNotFound(key.joined()));
         }
         let mut config_wallet = self.config.wallet.clone();
-        config_wallet.db_path = store_key.db_path(&self.config);
+        config_wallet.db_path = store_key.db_dir(&self.config);
         info!("Clearing db at {}", config_wallet.db_path);
         Wallet::clear_db(&config_wallet)?;
 
-        self.store.remove(&key, None)?;
+        self.store.remove(key, None)?;
 
         Ok(())
     }
@@ -600,10 +624,10 @@ impl WalletManager {
     /// # }
     /// ```
     pub fn clear_all_wallets(&self) -> Result<(), WalletError> {
-        let key = StoreKey::Wallet(String::new()).get_key();
-        info!("key with all wallets {key}");
-        for identifier_key in self.store.partial_compare_keys(&key, None)? {
-            let identifier = identifier_key.strip_prefix(&key).unwrap().to_string();
+        let prefix = StoreKey::wallet_scan_prefix()?;
+        info!("key with all wallets {prefix}");
+        for identifier_key in self.store.partial_compare_keys(&prefix, None)? {
+            let identifier = identifier_key.strip_prefix(&prefix).unwrap().to_string();
             self.clear_wallet(&identifier)?;
         }
         Ok(())
@@ -618,8 +642,8 @@ impl WalletManager {
     ///
     /// A `Result` containing the next wallet index or an error.
     fn get_wallet_index(&self) -> Result<u32, WalletError> {
-        let key_index = StoreKey::CreateWalletIndex.get_key();
-        let index = self.store.get(&key_index, None)?.unwrap_or(0);
+        let key_index = StoreKey::CreateWalletIndex.get_key()?;
+        let index = self.store.get(key_index.clone(), None)?.unwrap_or(0);
         // Increment the index to save for next wallet
         self.store.set(key_index, index + 1, None)?;
         Ok(index)

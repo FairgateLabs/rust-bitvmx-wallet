@@ -65,28 +65,31 @@ enum StoreKey {
 }
 
 impl StoreKey {
-    fn wallet_key<'a>(namespace: &[&str], tail: impl IntoIterator<Item = &'a str>) -> StorageKey {
-        StorageKey::new(
+    fn wallet_key<'a>(
+        namespace: &[&str],
+        tail: impl IntoIterator<Item = &'a str>,
+    ) -> Result<StorageKey, WalletError> {
+        Ok(StorageKey::new(
             std::iter::once("wallet")
                 .chain(namespace.iter().copied())
                 .map(str::to_string)
                 .chain(tail.into_iter().map(str::to_string)),
-        )
+        )?)
     }
 
-    fn record_key<'a>(tail: impl IntoIterator<Item = &'a str>) -> StorageKey {
+    fn record_key<'a>(tail: impl IntoIterator<Item = &'a str>) -> Result<StorageKey, WalletError> {
         Self::wallet_key(&["record"], tail)
     }
 
-    pub fn get_key(&self) -> StorageKey {
+    pub fn get_key(&self) -> Result<StorageKey, WalletError> {
         match self {
             Self::Wallet(identifier) => Self::record_key([identifier.as_str()]),
             Self::CreateWalletIndex => Self::wallet_key(&["index"], []),
         }
     }
 
-    pub fn wallet_scan_prefix() -> String {
-        Self::record_key([]).to_scan_prefix()
+    pub fn wallet_scan_prefix() -> Result<String, WalletError> {
+        Ok(Self::record_key([])?.to_scan_prefix())
     }
 
     /// Generates the database path for this key type.
@@ -232,14 +235,14 @@ impl WalletManager {
     /// # }
     /// ```
     pub fn list_wallets(&self) -> Result<Vec<(String, PublicKey)>, WalletError> {
-        let prefix = StoreKey::wallet_scan_prefix();
+        let prefix = StoreKey::wallet_scan_prefix()?;
         let mut wallets = Vec::new();
 
         for identifier_key in self.store.partial_compare_keys(&prefix, None)? {
             let identifier = identifier_key.strip_prefix(&prefix).unwrap().to_string();
             let pubkey: PublicKey = self
                 .store
-                .get(StorageKey::from_joined(&identifier_key), None)?
+                .get(StorageKey::from_joined(&identifier_key)?, None)?
                 .ok_or(WalletError::KeyNotFound(identifier_key))?;
 
             wallets.push((identifier, pubkey));
@@ -286,7 +289,7 @@ impl WalletManager {
         key_type: BitcoinKeyType,
     ) -> Result<Wallet, WalletError> {
         let store_key = StoreKey::Wallet(identifier.to_string());
-        let key = store_key.get_key();
+        let key = store_key.get_key()?;
         if self.store.has_key(key.clone(), None)? {
             return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
@@ -349,7 +352,7 @@ impl WalletManager {
         index: u32,
     ) -> Result<Wallet, WalletError> {
         let store_key = StoreKey::Wallet(identifier.to_string());
-        let key = store_key.get_key();
+        let key = store_key.get_key()?;
         if self.store.has_key(key.clone(), None)? {
             return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
@@ -412,7 +415,7 @@ impl WalletManager {
         private_key: &str,
     ) -> Result<Wallet, WalletError> {
         let store_key = StoreKey::Wallet(identifier.to_string());
-        let key = store_key.get_key();
+        let key = store_key.get_key()?;
         if self.store.has_key(key.clone(), None)? {
             return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
@@ -484,7 +487,7 @@ impl WalletManager {
         }
 
         let store_key = StoreKey::Wallet(identifier.to_string());
-        let key = store_key.get_key();
+        let key = store_key.get_key()?;
         if self.store.has_key(key.clone(), None)? {
             return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
@@ -536,7 +539,7 @@ impl WalletManager {
             )));
         }
         let store_key = StoreKey::Wallet(identifier.to_string());
-        let key = store_key.get_key();
+        let key = store_key.get_key()?;
         info!("Loading wallet {identifier} with key {key}");
         let pub_key: PublicKey = self.store.get(key, None)?.unwrap();
 
@@ -585,7 +588,7 @@ impl WalletManager {
         }
 
         let store_key = StoreKey::Wallet(identifier.to_string());
-        let key = store_key.get_key();
+        let key = store_key.get_key()?;
         if !self.store.has_key(key.clone(), None)? {
             return Err(WalletError::KeyNotFound(key.joined()));
         }
@@ -621,7 +624,7 @@ impl WalletManager {
     /// # }
     /// ```
     pub fn clear_all_wallets(&self) -> Result<(), WalletError> {
-        let prefix = StoreKey::wallet_scan_prefix();
+        let prefix = StoreKey::wallet_scan_prefix()?;
         info!("key with all wallets {prefix}");
         for identifier_key in self.store.partial_compare_keys(&prefix, None)? {
             let identifier = identifier_key.strip_prefix(&prefix).unwrap().to_string();
@@ -639,7 +642,7 @@ impl WalletManager {
     ///
     /// A `Result` containing the next wallet index or an error.
     fn get_wallet_index(&self) -> Result<u32, WalletError> {
-        let key_index = StoreKey::CreateWalletIndex.get_key();
+        let key_index = StoreKey::CreateWalletIndex.get_key()?;
         let index = self.store.get(key_index.clone(), None)?.unwrap_or(0);
         // Increment the index to save for next wallet
         self.store.set(key_index, index + 1, None)?;

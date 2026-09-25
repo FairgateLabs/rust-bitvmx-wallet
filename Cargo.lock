@@ -603,8 +603,8 @@ dependencies = [
 
 [[package]]
 name = "bitcoind"
-version = "0.8.5"
-source = "git+https://github.com/FairgateLabs/rust-bitcoind.git?tag=v0.8.5#2f86355516f539c242caec5545361c061ded78d7"
+version = "0.8.6"
+source = "git+https://github.com/FairgateLabs/rust-bitcoind.git?tag=v0.8.6#92739a7a04f9b618b338cbf39db8bdf3a72bdd1a"
 dependencies = [
  "bitvmx-bitcoin-rpc",
  "bollard",
@@ -632,8 +632,8 @@ dependencies = [
 
 [[package]]
 name = "bitvmx-bitcoin-rpc"
-version = "0.8.5"
-source = "git+https://github.com/FairgateLabs/rust-bitvmx-bitcoin-rpc.git?tag=v0.8.5#2b45ad1861a8348f02fe26721df812dc45ca6370"
+version = "0.8.6"
+source = "git+https://github.com/FairgateLabs/rust-bitvmx-bitcoin-rpc.git?tag=v0.8.6#b0fe9e3440c962501957b5dcc068b504b5779eee"
 dependencies = [
  "bitcoin 0.32.102",
  "bitcoincore-rpc",
@@ -648,8 +648,8 @@ dependencies = [
 
 [[package]]
 name = "bitvmx-key-manager"
-version = "0.8.5"
-source = "git+https://github.com/FairgateLabs/rust-bitvmx-key-manager.git?tag=v0.8.5#7152c6fb76e905a6c3d35ed475aca451d05b00df"
+version = "0.8.6"
+source = "git+https://github.com/FairgateLabs/rust-bitvmx-key-manager.git?tag=v0.8.6#b4b3ee709291898ada2c3d95973328577b35940b"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -680,8 +680,8 @@ dependencies = [
 
 [[package]]
 name = "bitvmx-protocol-builder"
-version = "0.8.5"
-source = "git+https://github.com/FairgateLabs/rust-bitvmx-protocol-builder.git?tag=v0.8.5#2a8adb4f89bbcf8f7607ebf361ad06f2b4402757"
+version = "0.8.6"
+source = "git+https://github.com/FairgateLabs/rust-bitvmx-protocol-builder.git?tag=v0.8.6#97849395afb04a5c446bb8f251e979b22db06e1f"
 dependencies = [
  "anyhow",
  "bitcoin 0.32.102",
@@ -690,7 +690,6 @@ dependencies = [
  "bitcoin-script-stack",
  "bitcoin-scriptexec",
  "bitcoincore-rpc",
- "bitvmx-bitcoin-rpc",
  "bitvmx-key-manager",
  "bitvmx-settings",
  "clap",
@@ -710,8 +709,8 @@ dependencies = [
 
 [[package]]
 name = "bitvmx-settings"
-version = "0.8.5"
-source = "git+https://github.com/FairgateLabs/rust-bitvmx-settings.git?tag=v0.8.5#67ff0344aec591222599d901ea3b85be45f97949"
+version = "0.8.6"
+source = "git+https://github.com/FairgateLabs/rust-bitvmx-settings.git?tag=v0.8.6#17a708dead6765c548b0ef94b5085b243be3bef0"
 dependencies = [
  "age",
  "clap",
@@ -726,7 +725,7 @@ dependencies = [
 
 [[package]]
 name = "bitvmx-wallet"
-version = "0.8.5"
+version = "0.8.6"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -4065,8 +4064,8 @@ dependencies = [
 
 [[package]]
 name = "rust-bitvmx-storage-backend"
-version = "0.8.5"
-source = "git+https://github.com/FairgateLabs/rust-bitvmx-storage-backend.git?tag=v0.8.5#9e2ec0a9eb5b03224fc5447dddb8b02b0ab03ecb"
+version = "0.8.6"
+source = "git+https://github.com/FairgateLabs/rust-bitvmx-storage-backend.git?tag=v0.8.6#438061802b322b7d8206dc4730f1afa2c4b94cf7"
 dependencies = [
  "age",
  "clap",

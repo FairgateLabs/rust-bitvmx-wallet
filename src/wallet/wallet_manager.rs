@@ -290,7 +290,7 @@ impl WalletManager {
     ) -> Result<Wallet, WalletError> {
         let store_key = StoreKey::Wallet(identifier.to_string());
         let key = store_key.get_key()?;
-        if self.store.has_key(key.clone(), None)? {
+        if self.store.has_key(&key, None)? {
             return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
 
@@ -353,7 +353,7 @@ impl WalletManager {
     ) -> Result<Wallet, WalletError> {
         let store_key = StoreKey::Wallet(identifier.to_string());
         let key = store_key.get_key()?;
-        if self.store.has_key(key.clone(), None)? {
+        if self.store.has_key(&key, None)? {
             return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
 
@@ -416,7 +416,7 @@ impl WalletManager {
     ) -> Result<Wallet, WalletError> {
         let store_key = StoreKey::Wallet(identifier.to_string());
         let key = store_key.get_key()?;
-        if self.store.has_key(key.clone(), None)? {
+        if self.store.has_key(&key, None)? {
             return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
 
@@ -488,7 +488,7 @@ impl WalletManager {
 
         let store_key = StoreKey::Wallet(identifier.to_string());
         let key = store_key.get_key()?;
-        if self.store.has_key(key.clone(), None)? {
+        if self.store.has_key(&key, None)? {
             return Err(WalletError::KeyAlreadyExists(identifier.to_string()));
         }
 
@@ -589,7 +589,7 @@ impl WalletManager {
 
         let store_key = StoreKey::Wallet(identifier.to_string());
         let key = store_key.get_key()?;
-        if !self.store.has_key(key.clone(), None)? {
+        if !self.store.has_key(&key, None)? {
             return Err(WalletError::KeyNotFound(key.joined()));
         }
         let mut config_wallet = self.config.wallet.clone();
@@ -643,7 +643,7 @@ impl WalletManager {
     /// A `Result` containing the next wallet index or an error.
     fn get_wallet_index(&self) -> Result<u32, WalletError> {
         let key_index = StoreKey::CreateWalletIndex.get_key()?;
-        let index = self.store.get(key_index.clone(), None)?.unwrap_or(0);
+        let index = self.store.get(&key_index, None)?.unwrap_or(0);
         // Increment the index to save for next wallet
         self.store.set(key_index, index + 1, None)?;
         Ok(index)

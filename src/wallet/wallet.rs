@@ -711,6 +711,7 @@ impl Wallet {
 
     /// Load or create a wallet with initial data and persist it to the rusqlite database.
     /// Note that the descriptor secret keys are not persisted to the database.
+    #[allow(deprecated)]
     fn init_bdk_wallet(
         conn: &mut Connection,
         network: Network,

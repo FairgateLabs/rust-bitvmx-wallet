@@ -33,6 +33,9 @@ pub enum ClassicWalletError {
     #[error("Key not found {0}")]
     KeyNotFound(String),
 
+    #[error("Transaction not found {0}")]
+    TransactionNotFound(String),
+
     #[error("Insufficient funds for: {0}")]
     InsufficientFunds(String),
 

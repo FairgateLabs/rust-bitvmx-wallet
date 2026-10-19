@@ -924,7 +924,9 @@ impl ClassicWallet {
             ClassicWalletError::FundingIdError("Bitcoin RPC client is not initialized".to_string())
         })?;
 
-        let tx = bitcoin_client.get_raw_transaction_info(&txid)?;
+        let tx = bitcoin_client
+            .get_raw_transaction_info(&txid)?
+            .ok_or(ClassicWalletError::TransactionNotFound(txid.to_string()))?;
         Ok(tx.confirmations.unwrap_or(0) > 0)
     }
 

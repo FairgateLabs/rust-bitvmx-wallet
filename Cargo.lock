@@ -327,9 +327,9 @@ dependencies = [
 
 [[package]]
 name = "bdk_bitcoind_rpc"
-version = "0.22.0"
+version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99a9a7a93a0c377d1858263122afe0565e6b38800fe39b2025f217e01f146294"
+checksum = "a216369a99680aab5fbc22957bef1a9bd557b56d5e306f9da89435176b8d65ff"
 dependencies = [
  "bdk_core",
  "bitcoin 0.32.102",

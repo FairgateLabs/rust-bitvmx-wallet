@@ -6,4 +6,14 @@ ignore = [
     # an upstream migration. Re-evaluate when `rsa` ships a patched release.
     # https://rustsec.org/advisories/RUSTSEC-2023-0071
     "RUSTSEC-2023-0071",
+
+    # crypto-bigint 0.5.5 is required by elliptic-curve 0.13 through
+    # p256/age 0.12.1. The fixed crypto-bigint 0.7 API is incompatible,
+    # and age 0.12.1 is currently the latest upstream release.
+    "RUSTSEC-2026-0387",
+
+    # libsqlite3-sys 0.28.0 is required by rusqlite 0.31 through
+    # bdk_chain/bdk_wallet 3.2.0. The fixed 0.39 API cannot be selected,
+    # and bdk_wallet 3.2.0 is currently the latest upstream release.
+    "RUSTSEC-2026-0459",
 ]

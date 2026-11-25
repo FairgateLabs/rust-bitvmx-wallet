@@ -48,7 +48,7 @@ use key_manager::{
 use std::rc::Rc;
 use storage_backend::{
     key::StorageKey,
-    storage::{KeyValueStore, Storage},
+    storage::Storage,
 };
 use tracing::{error, info};
 

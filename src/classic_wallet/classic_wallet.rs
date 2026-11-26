@@ -21,7 +21,7 @@ use serde_json::Value;
 use std::{collections::HashMap, fs, path::Path, rc::Rc};
 use storage_backend::{
     key::StorageKey,
-    storage::{KeyValueStore, Storage},
+    storage::Storage,
 };
 use tracing::{error, info};
 
